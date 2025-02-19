@@ -1,0 +1,36 @@
+#include "imports/stdlib.fc";
+
+const int OP_PURCHASE = 0x01;
+const int TON = 1000000000;
+const int THRESHOLD = 40 * TON;
+
+int calc_commission(int amount) {
+    if (amount > THRESHOLD) {
+        return amount * 2 / 100;
+    } else {
+        return amount * 3 / 100;
+    }
+}
+
+() send_funds(slice dest, int amount) impure {
+    builder b = begin_cell();
+    cell msg = b.end_cell();
+    send_raw_message(msg, 0);
+}
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    accept_message();
+    if (slice_empty?(in_msg_body)) {
+        return
+    }
+    int op = in_msg_body.load_uint(32);
+    if (op == OP_PURCHASE) {
+        slice seller_addr = in_msg_body;
+        int commission = calc_commission(msg_value);
+        int seller_amount = msg_value - commission;
+        cell data = get_data();
+        (slice owner_addr, cell _) = data.begin_parse().load_ref();
+        send_funds(seller_addr, seller_amount);
+        send_funds(owner_addr, commission);
+    }
+}
