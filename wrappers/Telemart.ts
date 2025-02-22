@@ -45,4 +45,14 @@ export class Telemart implements Contract {
             sendMode: SendMode.PAY_GAS_SEPARATELY,
         });
     }
+
+    async getCommissionThreshold(provider: ContractProvider) {
+        const result = (await provider.get('get_commission_threshold', [])).stack;
+        return result.readBigNumber();
+    }
+
+    async getBalance(provider: ContractProvider) {
+        const result = (await provider.get('get_balance', [])).stack;
+        return result.readBigNumber();
+    }
 }
