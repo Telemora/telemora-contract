@@ -24,9 +24,8 @@ int calc_commission(int amount) {
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
     accept_message();
 
-    if (slice_empty?(in_msg_body)) {
-        return ();
-    }
+    throw_if(101, slice_empty?(in_msg_body));
+    throw_if(102, in_msg_body.slice_bits() < 32);
 
     int op = in_msg_body~load_uint(32);
 
@@ -36,7 +35,6 @@ int calc_commission(int amount) {
         int seller_amount = msg_value - commission;
 
         cell data = get_data();
-
         (slice owner_slice, cell unused_cell) = data.begin_parse().load_ref();
 
         send_funds(seller_addr, seller_amount);
@@ -44,4 +42,10 @@ int calc_commission(int amount) {
     }
 }
 
+int get_commission_threshold() method_id {
+    return THRESHOLD;
+}
 
+int get_balance() method_id {
+    return get_balance().first();
+}
