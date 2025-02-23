@@ -1,16 +1,19 @@
 import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
 
 export type TelemartConfig = {
-    owner: Address;
+    id: number;
+    counter: number;
 };
 
 export function telemartConfigToCell(config: TelemartConfig): Cell {
-    return beginCell().storeAddress(config.owner).endCell();
+    return beginCell().storeUint(config.id, 32).storeUint(config.counter, 32).endCell();
 }
 
-export class Telemart implements Contract {
-    readonly provider?: ContractProvider;
+export const Opcodes = {
+    increase: 0x7e8764ef,
+};
 
+export class Telemart implements Contract {
     constructor(
         readonly address: Address,
         readonly init?: { code: Cell; data: Cell },
@@ -20,39 +23,47 @@ export class Telemart implements Contract {
         return new Telemart(address);
     }
 
-    static createFromConfig(config: TelemartConfig, code: Cell, workchain = 0): Telemart {
+    static createFromConfig(config: TelemartConfig, code: Cell, workchain = 0) {
         const data = telemartConfigToCell(config);
         const init = { code, data };
         return new Telemart(contractAddress(workchain, init), init);
     }
 
-    async sendDeploy(via: Sender, value: bigint) {
-        await this.provider!.internal(via, {
+    async sendDeploy(provider: ContractProvider, via: Sender, value: bigint) {
+        await provider.internal(via, {
             value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell().endCell(),
         });
     }
 
-    async sendInternal(via: Sender, params: { value: bigint; body: Cell }) {
-        if (!this.provider) {
-            throw new Error('Provider is undefined.');
-        }
-
-        return await this.provider.internal(via, {
-            value: params.value,
-            body: params.body,
+    async sendIncrease(
+        provider: ContractProvider,
+        via: Sender,
+        opts: {
+            increaseBy: number;
+            value: bigint;
+            queryID?: number;
+        },
+    ) {
+        await provider.internal(via, {
+            value: opts.value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(Opcodes.increase, 32)
+                .storeUint(opts.queryID ?? 0, 64)
+                .storeUint(opts.increaseBy, 32)
+                .endCell(),
         });
     }
 
-    async getCommissionThreshold(provider: ContractProvider) {
-        const result = (await provider.get('get_commission_threshold', [])).stack;
-        return result.readBigNumber();
+    async getCounter(provider: ContractProvider) {
+        const result = await provider.get('get_counter', []);
+        return result.stack.readNumber();
     }
 
-    async getBalance(provider: ContractProvider) {
-        const result = (await provider.get('get_balance', [])).stack;
-        return result.readBigNumber();
+    async getID(provider: ContractProvider) {
+        const result = await provider.get('get_id', []);
+        return result.stack.readNumber();
     }
 }
