@@ -9,7 +9,7 @@ cat << 'EOF' > "$output_file"
 EOF
 
 # Find files (excluding node_modules and the specified file) and process each.
-find . -type d -name "node_modules" -prune -o -type f \( -name "*.fc" -o -name "*.ts" \) -not -path "./contracts/imports/stdlib.fc" -print0 | while IFS= read -r -d '' file; do
+find . -type d -name "node_modules" -prune -o -type f -name "*.ts" -not -path "./contracts/imports/stdlib.fc" -print0 | while IFS= read -r -d '' file; do
     {
         # Use '--' to safely handle format strings starting with a dash.
         printf -- "- File: %s\n\n" "$file"
