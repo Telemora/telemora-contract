@@ -1,51 +1,92 @@
 #include "imports/stdlib.fc";
 
-const int OP_PURCHASE = 0x01;
-const int TON = 1000000000;
-const int THRESHOLD = 40 * TON;
+{-
+    Telemart Marketplace Smart Contract
 
-int calc_commission(int amount) {
-    if (amount > THRESHOLD) {
-        return amount * 2 / 100;
-    } else {
-        return amount * 3 / 100;
-    }
+    Global Variables:
+      - TELEMARKET_ADDR: Address (as a slice) of the Telemart marketplace wallet.
+      - LAST_REQ_SEQNO: 32-bit counter for replay protection.
+-}
+
+;; Global variable for Telemart marketplace address (MsgAddressInt slice)
+global slice TELEMARKET_ADDR;
+
+;; Global variable for replay protection: last processed external message sequence number.
+global int LAST_REQ_SEQNO;
+
+() init_replay_protection() impure {
+    LAST_REQ_SEQNO = 0;
 }
 
-() send_funds(slice dest, int amount) impure {
-    builder b = begin_cell();
-    b.store_uint(0x10, 6);
-    b.store_slice(dest);
-    b.store_coins(amount);
-    cell msg = b.end_cell();
-    send_raw_message(msg, 1);
+() set_telemart_addr(slice addr) impure {
+    TELEMARKET_ADDR = addr;
 }
 
-() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+;; ----------------------------------------------------------------------------
+;; calculate_split: Computes commission and seller payout.
+;; Commission is 5% if amount < 39 TON, otherwise 3%.
+(int, int) calculate_split(int amount) inline {
+    int TON = 1000000000;           ;; 1 TON in nanotons
+    int threshold = 39 * TON;         ;; 39 TON threshold
+    int commission = (amount < threshold) ? (amount * 5 / 100) : (amount * 3 / 100);
+    int seller_amount = amount - commission;
+    return (commission, seller_amount);
+}
+
+;; ----------------------------------------------------------------------------
+;; send_payment: Constructs and sends an internal message from src to dst with value.
+() send_payment(slice src, slice dst, int value) impure {
+    cell msg = begin_cell()
+        .store_uint(0x18, 6)                   ;; Optimized header: tag and flags
+        .store_slice(src)                      ;; Source address (buyer)
+        .store_slice(dst)                      ;; Destination address
+        .store_coins(value)                    ;; Amount in nanotons
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)  ;; Default header (placeholders)
+        .end_cell();
+    send_raw_message(msg, 64);                   ;; Mode 64: carry remaining value
+}
+
+;; ----------------------------------------------------------------------------
+;; process_trade: Splits the incoming payment between seller and Telemart.
+() process_trade(slice buyer, slice seller, int amount) impure {
+    throw_if(101, amount <= 0);                ;; Validate positive amount
+
+    (int commission, int seller_amount) = calculate_split(amount);
+
+    ;; Send commission to Telemart marketplace.
+    send_payment(buyer, TELEMARKET_ADDR, commission);
+
+    ;; Send remaining funds to seller.
+    send_payment(buyer, seller, seller_amount);
+}
+
+;; ----------------------------------------------------------------------------
+;; main: Entry point – external message handler.
+;; Expects message body with:
+;; [ req_seqno: 32 bits ]
+;; [ expire_at: 32 bits ]
+;; [ amount: 64 bits ]
+;; [ seller address: parsed via load_msg_addr() ]
+;; [ buyer address: remaining slice ]
+int main(slice in_msg_body) impure {
+    int req_seqno = in_msg_body~load_uint(32);
+    int expire_at = in_msg_body~load_uint(32);
+    int amount = in_msg_body~load_uint(64);
+    slice seller = in_msg_body~load_msg_addr();
+    slice buyer = in_msg_body;
+
+    ;; Replay Protection: Accept only if req_seqno equals LAST_REQ_SEQNO + 1.
+    throw_if(102, req_seqno != (LAST_REQ_SEQNO + 1));
+
+    ;; Expiration Check: Ensure the message is not expired.
+    throw_if(103, now() > expire_at);
+
+    ;; Accept the message (set gas limit appropriately).
     accept_message();
 
-    throw_if(101, slice_empty?(in_msg_body));
-    throw_if(102, in_msg_body.slice_bits() < 32);
+    ;; Update replay counter.
+    LAST_REQ_SEQNO = req_seqno;
 
-    int op = in_msg_body~load_uint(32);
-
-    if (op == OP_PURCHASE) {
-        slice seller_addr = in_msg_body;
-        int commission = calc_commission(msg_value);
-        int seller_amount = msg_value - commission;
-
-        cell data = get_data();
-        (slice owner_slice, cell unused_cell) = data.begin_parse().load_ref();
-
-        send_funds(seller_addr, seller_amount);
-        send_funds(owner_slice, commission);
-    }
-}
-
-int get_commission_threshold() method_id {
-    return THRESHOLD;
-}
-
-int get_balance() method_id {
-    return get_balance().first();
+    process_trade(buyer, seller, amount);
+    return 0;
 }
