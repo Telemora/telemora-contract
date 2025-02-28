@@ -20,6 +20,12 @@ slice get_telemarket_addr() method_id {
     int threshold = 39 * TON;
     int commission = (amount < threshold) ? (amount * 5 / 100) : (amount * 3 / 100);
     int seller_amount = amount - commission;
+
+    slice ds = get_data().begin_parse();
+    int current_commission = ds~load_uint(64);
+
+    set_data(begin_cell().store_uint(current_commission + commission, 64).end_cell());
+
     return (commission, seller_amount);
 }
 
