@@ -1,15 +1,18 @@
 #include "imports/stdlib.fc";
 
-global slice TELEMARKET_ADDR;
-
-global int LAST_REQ_SEQNO;
-
-() init_replay_protection() impure {
-    LAST_REQ_SEQNO = 0;
+() set_telemart_addr(slice addr) impure {
+    set_data(begin_cell().store_slice(addr).store_uint(0, 32).end_cell());
 }
 
-() set_telemart_addr(slice addr) impure {
-    TELEMARKET_ADDR = addr;
+slice get_telemarket_addr() method_id {
+    slice ds = get_data().begin_parse();
+    return ds~load_msg_addr();
+}
+
+() init_replay_protection() impure {
+    slice ds = get_data().begin_parse();
+    slice owner = ds~load_msg_addr();
+    set_data(begin_cell().store_slice(owner).store_uint(0, 32).end_cell());
 }
 
 (int, int) calculate_split(int amount) inline {
@@ -20,15 +23,14 @@ global int LAST_REQ_SEQNO;
     return (commission, seller_amount);
 }
 
-() send_payment(slice src, slice dst, int value) impure {
-    cell msg = begin_cell()
-        .store_uint(0x18, 6)
-        .store_slice(src)
+() send_payment(slice dst, int value) impure {
+    throw_if(201, value <= 0);
+
+    send_raw_message(begin_cell()
+        .store_uint(0x10, 32)
         .store_slice(dst)
-        .store_coins(value)
-        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-        .end_cell();
-    send_raw_message(msg, 64);
+        .store_int(value, 64)
+        .end_cell(), 3);
 }
 
 () process_trade(slice buyer, slice seller, int amount) impure {
@@ -36,9 +38,11 @@ global int LAST_REQ_SEQNO;
 
     (int commission, int seller_amount) = calculate_split(amount);
 
-    send_payment(buyer, TELEMARKET_ADDR, commission);
+    slice telemarket_addr = get_telemarket_addr();
 
-    send_payment(buyer, seller, seller_amount);
+    send_payment(telemarket_addr, commission);
+
+    send_payment(seller, seller_amount);
 }
 
 int main(slice in_msg_body) impure {
@@ -48,13 +52,17 @@ int main(slice in_msg_body) impure {
     slice seller = in_msg_body~load_msg_addr();
     slice buyer = in_msg_body~load_msg_addr();
 
-    throw_if(102, req_seqno != (LAST_REQ_SEQNO + 1));
+    slice ds = get_data().begin_parse();
+    slice owner = ds~load_msg_addr();
+    int last_req_seqno = ds~load_uint(32);
+
+    throw_if(102, req_seqno != (last_req_seqno + 1));
 
     throw_if(103, now() > expire_at);
 
     accept_message();
 
-    LAST_REQ_SEQNO = req_seqno;
+    set_data(begin_cell().store_slice(owner).store_uint(req_seqno, 32).end_cell());
 
     process_trade(buyer, seller, amount);
     return 0;
