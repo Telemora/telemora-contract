@@ -21,7 +21,7 @@ describe('Telemart Smart Contract Tests', () => {
   beforeEach(async () => {
     blockchain = await Blockchain.create();
 
-    telemart = blockchain.openContract(Telemart.createFromConfig({ marketAddress: deployer.address }, code));
+    telemart = blockchain.openContract(Telemart.createFromConfig({ admin: deployer.address, initialBalance: toNano('0') }, code));
     deployer = await blockchain.treasury('deployer');
 
     const deployResult = await telemart.sendDeploy(deployer.getSender(), toNano('0.05'));
