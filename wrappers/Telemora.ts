@@ -10,7 +10,7 @@ import {
   toNano,
 } from '@ton/core';
 
-export class Telemart implements Contract {
+export class Telemora implements Contract {
   constructor(
     readonly address: Address,
     readonly init?: { code: Cell; data: Cell },
@@ -30,11 +30,11 @@ export class Telemart implements Contract {
     },
     code: Cell,
     workchain = 0,
-  ): Telemart {
+  ): Telemora {
     const data = beginCell().storeAddress(config.admin).storeCoins(config.initialBalance).endCell();
     const init = { code, data };
     const address = contractAddress(workchain, init);
-    return new Telemart(address, init);
+    return new Telemora(address, init);
   }
 
   /**
@@ -53,9 +53,9 @@ export class Telemart implements Contract {
   }
 
   /**
-   * Updates the telemart address stored in the contract.
+   * Updates the telemora address stored in the contract.
    */
-  async setTelemartAddress(provider: ContractProvider, sender: Sender, newAddress: Address) {
+  async setTelemoraAddress(provider: ContractProvider, sender: Sender, newAddress: Address) {
     await provider.internal(sender, {
       value: toNano('0.05'),
       sendMode: SendMode.PAY_GAS_SEPARATELY,
@@ -64,9 +64,9 @@ export class Telemart implements Contract {
   }
 
   /**
-   * Fetches the current telemart address stored in the contract.
+   * Fetches the current telemora address stored in the contract.
    */
-  async getTelemartAddress(provider: ContractProvider): Promise<Address> {
+  async getTelemoraAddress(provider: ContractProvider): Promise<Address> {
     const { stack } = await provider.get('get_telemarket_addr', []);
     return stack.readAddress();
   }

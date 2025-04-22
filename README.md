@@ -1,4 +1,4 @@
-# telemart-ton
+# telemora-contract
 
 ## Project structure
 

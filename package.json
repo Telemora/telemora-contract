@@ -1,5 +1,5 @@
 {
-    "name": "telemart-ton",
+    "name": "telemora-contract",
     "version": "0.0.1",
     "scripts": {
         "start": "blueprint run",

@@ -1,14 +1,14 @@
 import { Cell, toNano } from '@ton/core';
-import { Telemart } from '../wrappers/Telemart';
+import { Telemora } from '../wrappers/Telemora';
 import '@ton/test-utils';
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { compile } from '@ton/blueprint';
 
-describe('Telemart Smart Contract Tests', () => {
+describe('Telemora Smart Contract Tests', () => {
   let code: Cell;
 
   beforeAll(async () => {
-    code = await compile('Telemart');
+    code = await compile('Telemora');
   });
 
   let blockchain: Blockchain;
@@ -16,15 +16,15 @@ describe('Telemart Smart Contract Tests', () => {
   let buyer: SandboxContract<TreasuryContract>;
   let seller: SandboxContract<TreasuryContract>;
   let marketOwner: SandboxContract<TreasuryContract>;
-  let telemart: SandboxContract<Telemart>;
+  let telemora: SandboxContract<Telemora>;
 
   beforeEach(async () => {
     blockchain = await Blockchain.create();
 
-    telemart = blockchain.openContract(Telemart.createFromConfig({ admin: deployer.address, initialBalance: toNano('0') }, code));
+    telemora = blockchain.openContract(Telemora.createFromConfig({ admin: deployer.address, initialBalance: toNano('0') }, code));
     deployer = await blockchain.treasury('deployer');
 
-    const deployResult = await telemart.sendDeploy(deployer.getSender(), toNano('0.05'));
+    const deployResult = await telemora.sendDeploy(deployer.getSender(), toNano('0.05'));
 
     buyer = await blockchain.treasury('buyer');
     seller = await blockchain.treasury('seller');
@@ -32,7 +32,7 @@ describe('Telemart Smart Contract Tests', () => {
 
     expect(deployResult.transactions).toHaveTransaction({
       from: deployer.address,
-      to: telemart.address,
+      to: telemora.address,
       deploy: true,
       success: true,
     });
@@ -43,8 +43,8 @@ describe('Telemart Smart Contract Tests', () => {
     const reqSeqNo = 1;
     const expireAt = Math.floor(Date.now() / 1000) + 600; // Expires in 10 minutes
 
-    // Buyer sends a trade request to the Telemart contract
-    const result = await telemart.sendTradeRequest(buyer.getSender(), {
+    // Buyer sends a trade request to the Telemora contract
+    const result = await telemora.sendTradeRequest(buyer.getSender(), {
       buyer: buyer.address,
       seller: seller.address,
       amount,
@@ -55,7 +55,7 @@ describe('Telemart Smart Contract Tests', () => {
     // Verify the transaction was successful
     expect(result.transactions).toHaveTransaction({
       from: buyer.address,
-      to: telemart.address,
+      to: telemora.address,
       success: true,
     });
 
@@ -64,10 +64,10 @@ describe('Telemart Smart Contract Tests', () => {
     const sellerAmount = 50 - commission;
 
     // Retrieve and verify balances
-    const telemartBalance = await telemart.getContractBalance();
+    const telemoraBalance = await telemora.getContractBalance();
     const sellerBalance = await blockchain.getContract(seller.address);
 
-    expect(telemartBalance).toBe(toNano(commission.toString()));
+    expect(telemoraBalance).toBe(toNano(commission.toString()));
     expect(sellerBalance).toBe(toNano(sellerAmount.toString()));
   });
 
@@ -77,7 +77,7 @@ describe('Telemart Smart Contract Tests', () => {
     const expireAt = Math.floor(Date.now() / 1000) + 600;
 
     // First trade request
-    const firstResult = await telemart.sendTradeRequest(buyer.getSender(), {
+    const firstResult = await telemora.sendTradeRequest(buyer.getSender(), {
       buyer: buyer.address,
       seller: seller.address,
       amount,
@@ -87,13 +87,13 @@ describe('Telemart Smart Contract Tests', () => {
 
     expect(firstResult.transactions).toHaveTransaction({
       from: buyer.address,
-      to: telemart.address,
+      to: telemora.address,
       success: true,
     });
 
     // Attempt to send the same request again (should fail)
     await expect(
-      telemart.sendTradeRequest(buyer.getSender(), {
+      telemora.sendTradeRequest(buyer.getSender(), {
         buyer: buyer.address,
         seller: seller.address,
         amount,
