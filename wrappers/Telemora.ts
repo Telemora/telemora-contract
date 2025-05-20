@@ -14,7 +14,9 @@ export class Telemora implements Contract {
   constructor(
     readonly address: Address,
     readonly init?: { code: Cell; data: Cell },
-  ) {}
+  ) {
+    this.address = address;
+  }
 
   /**
    * after a lot of researches I found out that the standard way to get the contract address is as following
@@ -35,6 +37,10 @@ export class Telemora implements Contract {
     const init = { code, data };
     const address = contractAddress(workchain, init);
     return new Telemora(address, init);
+  }
+
+  async isDeployed(): Promise<boolean> {
+    return true;
   }
 
   /**
@@ -59,7 +65,7 @@ export class Telemora implements Contract {
     await provider.internal(sender, {
       value: toNano('0.05'),
       sendMode: SendMode.PAY_GAS_SEPARATELY,
-      body: beginCell().storeUint(0x10, 32).storeSlice(newAddress).endCell(),
+      body: beginCell().storeUint(0x10, 32).storeAddress(newAddress).endCell(),
     });
   }
 
@@ -83,8 +89,8 @@ export class Telemora implements Contract {
       .storeUint(tradeDetails.reqSeqNo, 32)
       .storeUint(tradeDetails.expireAt, 32)
       .storeInt(tradeDetails.amount, 64)
-      .storeSlice(tradeDetails.seller)
-      .storeSlice(tradeDetails.buyer)
+      .storeAddress(tradeDetails.seller)
+      .storeAddress(tradeDetails.buyer)
       .endCell();
 
     return provider.internal(sender, {
