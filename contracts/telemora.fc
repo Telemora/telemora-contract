@@ -142,7 +142,7 @@ int get_order_status(int order_id) method_id {
         int status = ds~load_uint(8);
 
         throw_unless(ERR_INVALID_ORDER_STATE_FOR_ACTION, status == ORDER_STATUS_PAID_TO_SELLER);
-        throw_unless(ERR_CONTRACT_BALANCE_INSUFFICIENT, current_contract_balance - min_gas_for_internal_msg >= total_original_amount);
+        throw_unless(ERR_CONTRACT_BALANCE_INSUFFICIENT, get_balance().first() >= total_original_amount);
         send_raw_message(
             begin_cell()
                 .store_uint(0x18, 6)
@@ -181,7 +181,7 @@ int get_order_status(int order_id) method_id {
 
         throw_unless(ERR_INVALID_ORDER_STATE_FOR_ACTION, status == ORDER_STATUS_PAID_TO_SELLER);
 
-        throw_unless(ERR_CONTRACT_BALANCE_INSUFFICIENT, current_contract_balance - min_gas_for_internal_msg >= total_original_amount);
+        throw_unless(ERR_CONTRACT_BALANCE_INSUFFICIENT, get_balance().first() >= total_original_amount);
 
         send_raw_message(
             begin_cell()
