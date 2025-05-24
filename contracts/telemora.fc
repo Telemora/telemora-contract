@@ -129,7 +129,7 @@ int get_order_status(int order_id) method_id {
         );
         save_data(marketplace_addr, commission_percentage, orders_dict);
     }
-    if (op == OP_REFUND_ORDER) {
+    elseif (op == OP_REFUND_ORDER) {
         int order_id = cs~load_uint(64);
 
         var (order_data_cell, found) = orders_dict.dict_empty?(64, order_id);
@@ -164,7 +164,7 @@ int get_order_status(int order_id) method_id {
         );
         save_data(marketplace_addr, commission_percentage, orders_dict);
     }
-    if (op == OP_MARKETPLACE_CANCEL_ORDER) {
+    elseif (op == OP_MARKETPLACE_CANCEL_ORDER) {
 
         int order_id = cs~load_uint(64);
 
