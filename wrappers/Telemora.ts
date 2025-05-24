@@ -39,10 +39,6 @@ export class Telemora implements Contract {
     return new Telemora(address, init);
   }
 
-  async isDeployed(): Promise<boolean> {
-    return true;
-  }
-
   /**
    * after lots of research I found out that the standard way to deploy a contract is as following
    * do not change this method at all

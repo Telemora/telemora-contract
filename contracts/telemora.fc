@@ -1,75 +1,211 @@
 #include "imports/stdlib.fc";
 
-() set_telemora_addr(slice addr) impure {
-    set_data(begin_cell().store_slice(addr).store_uint(0, 32).end_cell());
-}
+const int ORDER_STATUS_PENDING_PAYMENT = 0;
+const int ORDER_STATUS_PAID_TO_SELLER = 1;
+const int ORDER_STATUS_REFUNDED = 2;
+const int ORDER_STATUS_CANCELLED_BY_MARKETPLACE = 3;
 
-slice get_telemora_addr() method_id {
+const int OP_PROCESS_ORDER_PAYMENT = 0x12345;
+const int OP_REFUND_ORDER = 0x67890;
+const int OP_MARKETPLACE_CANCEL_ORDER = 0xABCDE;
+
+const int ERR_NOT_IMPLEMENTED = 0xFF;
+const int ERR_INVALID_OPCODE = 7;
+const int ERR_INVALID_AMOUNT = 10;
+const int ERR_UNAUTHORIZED_SENDER = 100;
+const int ERR_ORDER_NOT_FOUND = 101;
+const int ERR_ORDER_ALREADY_PROCESSED = 102;
+const int ERR_INVALID_ORDER_STATE_FOR_ACTION = 103;
+const int ERR_COMMISSION_EXCEEDS_TOTAL = 104;
+const int ERR_CONTRACT_BALANCE_INSUFFICIENT = 105;
+
+int equal_slices(slice a, slice b) asm "SDEQ";
+
+(slice, int, cell) load_data() inline {
     slice ds = get_data().begin_parse();
-    return ds~load_msg_addr();
+    throw_if(ERR_CONTRACT_BALANCE_INSUFFICIENT, ds.slice_empty?());
+
+    slice marketplace_addr = ds~load_msg_addr();
+    int commission_percentage = ds~load_int(16);
+    cell orders_dict = ds~load_dict();
+
+    return (marketplace_addr, commission_percentage, orders_dict);
 }
 
-() init_replay_protection() impure {
-    slice ds = get_data().begin_parse();
-    slice owner = ds~load_msg_addr();
-    set_data(begin_cell().store_slice(owner).store_uint(0, 32).end_cell());
+() save_data(slice marketplace_addr, int commission_percentage, cell orders_dict) inline {
+    set_data(
+        begin_cell()
+            .store_slice(marketplace_addr)
+            .store_int(commission_percentage, 16)
+            .store_dict(orders_dict)
+            .end_cell()
+    );
 }
 
-(int, int) calculate_split(int amount) inline {
-    int TON = 1000000000;
-    int threshold = 39 * TON;
-    int commission = (amount < threshold) ? (amount * 5 / 100) : (amount * 3 / 100);
-    int seller_amount = amount - commission;
 
-    slice ds = get_data().begin_parse();
-    int current_commission = ds~load_uint(64);
-
-    set_data(begin_cell().store_uint(current_commission + commission, 64).end_cell());
-
-    return (commission, seller_amount);
+(slice, int) get_contract_config() method_id {
+    (slice marketplace_addr, int commission_percentage, cell orders_dict) = load_data();
+    return (marketplace_addr, commission_percentage);
 }
 
-() send_payment(slice dst, int value) impure {
-    throw_if(201, value <= 0);
+(slice, slice, int, int) get_order_details(int order_id) method_id {
+    (slice marketplace_addr, int commission_percentage, cell orders_dict) = load_data();
 
-    send_raw_message(begin_cell()
-        .store_uint(0x10, 32)
-        .store_slice(dst)
-        .store_int(value, 64)
-        .end_cell(), 3);
+    var (order_data_cell, found) = orders_dict.dict_empty?(64, order_id);
+    throw_unless(ERR_ORDER_NOT_FOUND, found);
+
+    slice ds = order_data_cell.begin_parse();
+    slice buyer_addr = ds~load_msg_addr();
+    slice seller_addr = ds~load_msg_addr();
+    int total_amount_received = ds~load_coins();
+    int status = ds~load_uint(8);
+    return (buyer_addr, seller_addr, total_amount_received, status);
 }
 
-() process_trade(slice buyer, slice seller, int amount) impure {
-    throw_if(101, amount <= 0);
-
-    (int commission, int seller_amount) = calculate_split(amount);
-
-    slice telemarket_addr = get_telemora_addr();
-
-    send_payment(telemarket_addr, commission);
-
-    send_payment(seller, seller_amount);
+int get_order_status(int order_id) method_id {
+    (slice buyer_addr, slice seller_addr, int total_amount_received, int status) = get_order_details(order_id);
+    return status;
 }
 
-int main(slice in_msg_body) impure {
-    int req_seqno = in_msg_body~load_uint(32);
-    int expire_at = in_msg_body~load_uint(32);
-    int amount = in_msg_body~load_uint(64);
-    slice seller = in_msg_body~load_msg_addr();
-    slice buyer = in_msg_body~load_msg_addr();
-
-    slice ds = get_data().begin_parse();
-    slice owner = ds~load_msg_addr();
-    int last_req_seqno = ds~load_uint(32);
-
-    throw_if(102, req_seqno != (last_req_seqno + 1));
-
-    throw_if(103, now() > expire_at);
-
+() recv_internal(int balance, int msg_value, cell in_msg_cell, slice in_msg) impure {
     accept_message();
 
-    set_data(begin_cell().store_slice(owner).store_uint(req_seqno, 32).end_cell());
+    slice cs = in_msg_cell;
+    int op = cs~load_uint(32);
+    int query_id = cs~load_uint(64);
 
-    process_trade(buyer, seller, amount);
-    return 0;
+    (slice marketplace_addr, int commission_percentage, cell orders_dict) = load_data();
+    slice sender_addr = in_msg~load_msg_addr();
+    int current_contract_balance = balance;
+
+    int min_gas_for_internal_msg = 20000000;
+
+    if (op == OP_PROCESS_ORDER_PAYMENT) {
+
+        slice seller_addr = cs~load_msg_addr();
+        int order_id = cs~load_uint(64);
+
+        throw_unless(ERR_INVALID_AMOUNT, msg_value > 0);
+
+        throw_unless(ERR_UNAUTHORIZED_SENDER, sender_addr.preload_uint(2) == 0x80);
+
+        var (existing_order_data, found) = orders_dict.dict_empty?(64, order_id);
+        throw_if(ERR_ORDER_ALREADY_PROCESSED, found);
+
+        int total_payment_from_buyer = msg_value;
+        int commission_amount = total_payment_from_buyer * commission_percentage / 10000;
+
+        throw_unless(ERR_COMMISSION_EXCEEDS_TOTAL, commission_amount < total_payment_from_buyer);
+        int seller_payout_amount = total_payment_from_buyer - commission_amount;
+        send_raw_message(
+            begin_cell()
+                .store_uint(0x18, 6)
+                .store_slice(marketplace_addr)
+                .store_coins(commission_amount)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                .store_uint(0, 32)
+                .store_uint(query_id, 64)
+                .end_cell(),
+            1
+        );
+        send_raw_message(
+            begin_cell()
+                .store_uint(0x18, 6)
+                .store_slice(seller_addr)
+                .store_coins(seller_payout_amount)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                .store_uint(0, 32)
+                .store_uint(query_id, 64)
+                .end_cell(),
+            1
+        );
+        orders_dict.dict_set(64, order_id,
+            begin_cell()
+                .store_slice(sender_addr)
+                .store_slice(seller_addr)
+                .store_coins(total_payment_from_buyer)
+                .store_uint(ORDER_STATUS_PAID_TO_SELLER, 8)
+                .end_cell()
+        );
+        save_data(marketplace_addr, commission_percentage, orders_dict);
+    }
+    if (op == OP_REFUND_ORDER) {
+        int order_id = cs~load_uint(64);
+
+        var (order_data_cell, found) = orders_dict.dict_empty?(64, order_id);
+        throw_unless(ERR_ORDER_NOT_FOUND, found);
+
+        slice ds = order_data_cell.begin_parse();
+        slice buyer_addr = ds~load_msg_addr();
+        slice seller_addr = ds~load_msg_addr();
+        int total_original_amount = ds~load_coins();
+        int status = ds~load_uint(8);
+
+        throw_unless(ERR_INVALID_ORDER_STATE_FOR_ACTION, status == ORDER_STATUS_PAID_TO_SELLER);
+        throw_unless(ERR_CONTRACT_BALANCE_INSUFFICIENT, current_contract_balance - min_gas_for_internal_msg >= total_original_amount);
+        send_raw_message(
+            begin_cell()
+                .store_uint(0x18, 6)
+                .store_slice(buyer_addr)
+                .store_coins(total_original_amount)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                .store_uint(0, 32)
+                .store_uint(query_id, 64)
+                .end_cell(),
+            1
+        );
+        orders_dict.dict_set(64, order_id,
+            begin_cell()
+                .store_slice(buyer_addr)
+                .store_slice(seller_addr)
+                .store_coins(total_original_amount)
+                .store_uint(ORDER_STATUS_REFUNDED, 8)
+                .end_cell()
+        );
+        save_data(marketplace_addr, commission_percentage, orders_dict);
+    }
+    if (op == OP_MARKETPLACE_CANCEL_ORDER) {
+
+        int order_id = cs~load_uint(64);
+
+        throw_unless(ERR_UNAUTHORIZED_SENDER, equal_slices(sender_addr, marketplace_addr));
+
+        var (order_data_cell, found) = orders_dict.dict_empty?(64, order_id);
+        throw_unless(ERR_ORDER_NOT_FOUND, found);
+
+        slice ds = order_data_cell.begin_parse();
+        slice buyer_addr = ds~load_msg_addr();
+        slice seller_addr = ds~load_msg_addr();
+        int total_original_amount = ds~load_coins();
+        int status = ds~load_uint(8);
+
+        throw_unless(ERR_INVALID_ORDER_STATE_FOR_ACTION, status == ORDER_STATUS_PAID_TO_SELLER);
+
+        throw_unless(ERR_CONTRACT_BALANCE_INSUFFICIENT, current_contract_balance - min_gas_for_internal_msg >= total_original_amount);
+
+        send_raw_message(
+            begin_cell()
+                .store_uint(0x18, 6)
+                .store_slice(buyer_addr)
+                .store_coins(total_original_amount)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                .store_uint(0, 32)
+                .store_uint(query_id, 64)
+                .end_cell(),
+            1
+        );
+
+        orders_dict.dict_set(64, order_id,
+            begin_cell()
+                .store_slice(buyer_addr)
+                .store_slice(seller_addr)
+                .store_coins(total_original_amount)
+                .store_uint(ORDER_STATUS_CANCELLED_BY_MARKETPLACE, 8)
+                .end_cell()
+        );
+        save_data(marketplace_addr, commission_percentage, orders_dict);
+    }
+    else {
+        throw(ERR_INVALID_OPCODE);
+    }
 }
