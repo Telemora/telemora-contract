@@ -1,106 +1,90 @@
 #include "imports/stdlib.fc";
 
-const int ORDER_STATUS_PENDING_PAYMENT = 0;
-const int ORDER_STATUS_PAID_TO_SELLER = 1;
-const int ORDER_STATUS_REFUNDED = 2;
-const int ORDER_STATUS_CANCELLED_BY_MARKETPLACE = 3;
-
 const int OP_PROCESS_ORDER_PAYMENT = 0x12345;
-const int OP_REFUND_ORDER = 0x67890;
-const int OP_MARKETPLACE_CANCEL_ORDER = 0xABCDE;
 
-const int ERR_NOT_IMPLEMENTED = 0xFF;
 const int ERR_INVALID_OPCODE = 7;
 const int ERR_INVALID_AMOUNT = 10;
 const int ERR_UNAUTHORIZED_SENDER = 100;
-const int ERR_ORDER_NOT_FOUND = 101;
-const int ERR_ORDER_ALREADY_PROCESSED = 102;
-const int ERR_INVALID_ORDER_STATE_FOR_ACTION = 103;
 const int ERR_COMMISSION_EXCEEDS_TOTAL = 104;
-const int ERR_CONTRACT_BALANCE_INSUFFICIENT = 105;
+const int ERR_CONTRACT_NOT_INITIALIZED = 105;
+const int ERR_INVALID_SIGNATURE = 107;
+const int ERR_MESSAGE_EXPIRED = 108;
+const int ERR_AMOUNT_MISMATCH = 109;
+const int ERR_INVALID_COMMISSION_VALUE = 110;
+const int ERR_INVALID_MARKETPLACE_ADDR = 111;
 
 int equal_slices(slice a, slice b) asm "SDEQ";
+int check_signature(int hash, slice signature, int public_key_int) asm "CHKSIGNU";
 
-(slice, int, cell) load_data() inline {
-    slice ds = get_data().begin_parse();
-    throw_if(ERR_CONTRACT_BALANCE_INSUFFICIENT, ds.slice_empty?());
-
-    slice marketplace_addr = ds~load_msg_addr();
-    int commission_percentage = ds~load_int(16);
-    cell orders_dict = ds~load_dict();
-
-    return (marketplace_addr, commission_percentage, orders_dict);
+(int, slice) load_data() inline {
+    slice data_slice = get_data().begin_parse();
+    throw_if(ERR_CONTRACT_NOT_INITIALIZED, data_slice.slice_empty?());
+    int public_key = data_slice~load_uint(256);
+    slice marketplace_addr = data_slice~load_msg_addr();
+    return (public_key, marketplace_addr);
 }
 
-() save_data(slice marketplace_addr, int commission_percentage, cell orders_dict) inline {
+() save_data(int public_key, slice marketplace_addr) inline {
     set_data(
         begin_cell()
+            .store_uint(public_key, 256)
             .store_slice(marketplace_addr)
-            .store_int(commission_percentage, 16)
-            .store_dict(orders_dict)
             .end_cell()
     );
 }
 
-
-(slice, int) get_contract_config() method_id {
-    (slice marketplace_addr, int commission_percentage, cell orders_dict) = load_data();
-    return (marketplace_addr, commission_percentage);
+(int, slice) get_contract_config() method_id {
+    (int public_key, slice marketplace_addr) = load_data();
+    return (public_key, marketplace_addr);
 }
 
-(slice, slice, int, int) get_order_details(int order_id) method_id {
-    (slice marketplace_addr, int commission_percentage, cell orders_dict) = load_data();
-
-    var (order_data_cell, found) = orders_dict.dict_empty?(64, order_id);
-    throw_unless(ERR_ORDER_NOT_FOUND, found);
-
-    slice ds = order_data_cell.begin_parse();
-    slice buyer_addr = ds~load_msg_addr();
-    slice seller_addr = ds~load_msg_addr();
-    int total_amount_received = ds~load_coins();
-    int status = ds~load_uint(8);
-    return (buyer_addr, seller_addr, total_amount_received, status);
-}
-
-int get_order_status(int order_id) method_id {
-    (slice buyer_addr, slice seller_addr, int total_amount_received, int status) = get_order_details(order_id);
-    return status;
-}
-
-() recv_internal(int balance, int msg_value, cell in_msg_cell, slice in_msg) impure {
+() recv_internal(int msg_value, cell in_msg_cell, slice in_msg) impure {
     accept_message();
 
-    slice cs = in_msg_cell;
-    int op = cs~load_uint(32);
-    int query_id = cs~load_uint(64);
+    int op = in_msg~load_uint(32);
+    int query_id = in_msg~load_uint(64);
 
-    (slice marketplace_addr, int commission_percentage, cell orders_dict) = load_data();
-    slice sender_addr = in_msg~load_msg_addr();
-    int current_contract_balance = balance;
-
-    int min_gas_for_internal_msg = 20000000;
+    (int public_key, slice marketplace_addr) = load_data();
+    slice sender_addr = in_msg_cell~load_msg_addr();
 
     if (op == OP_PROCESS_ORDER_PAYMENT) {
-
-        slice seller_addr = cs~load_msg_addr();
-        int order_id = cs~load_uint(64);
+        int order_id = in_msg~load_uint(64);
+        slice seller_addr = in_msg~load_msg_addr();
+        slice marketplace_addr_from_msg = in_msg~load_msg_addr();
+        int commission_bps = in_msg~load_uint(16);
+        int amount_from_signed_data = in_msg~load_coins();
+        int expiry_timestamp = in_msg~load_uint(32);
+        slice signature = in_msg~load_bits(512);
 
         throw_unless(ERR_INVALID_AMOUNT, msg_value > 0);
-
         throw_unless(ERR_UNAUTHORIZED_SENDER, sender_addr.preload_uint(2) == 0x80);
 
-        var (existing_order_data, found) = orders_dict.dict_empty?(64, order_id);
-        throw_if(ERR_ORDER_ALREADY_PROCESSED, found);
+        cell data_to_sign_cell = begin_cell()
+            .store_uint(order_id, 64)
+            .store_slice(seller_addr)
+            .store_slice(marketplace_addr_from_msg)
+            .store_uint(commission_bps, 16)
+            .store_coins(amount_from_signed_data)
+            .store_uint(expiry_timestamp, 32)
+            .end_cell();
 
-        int total_payment_from_buyer = msg_value;
-        int commission_amount = total_payment_from_buyer * commission_percentage / 10000;
+        int recomputed_hash = data_to_sign_cell.cell_hash();
 
-        throw_unless(ERR_COMMISSION_EXCEEDS_TOTAL, commission_amount < total_payment_from_buyer);
-        int seller_payout_amount = total_payment_from_buyer - commission_amount;
+        throw_unless(ERR_INVALID_SIGNATURE, check_signature(recomputed_hash, signature, public_key));
+        throw_unless(ERR_MESSAGE_EXPIRED, now() <= expiry_timestamp);
+        throw_unless(ERR_AMOUNT_MISMATCH, msg_value >= amount_from_signed_data);
+        throw_unless(ERR_INVALID_MARKETPLACE_ADDR, equal_slices(marketplace_addr_from_msg, marketplace_addr));
+        throw_unless(ERR_INVALID_COMMISSION_VALUE, commission_bps >= 0 & commission_bps <= 10000);
+
+        int commission_amount = msg_value * commission_bps / 10000;
+        throw_unless(ERR_COMMISSION_EXCEEDS_TOTAL, commission_amount < msg_value);
+        int seller_payout_amount = msg_value - commission_amount;
+
+        ;;; send commission to marketplace
         send_raw_message(
             begin_cell()
                 .store_uint(0x18, 6)
-                .store_slice(marketplace_addr)
+                .store_slice(marketplace_addr_from_msg)
                 .store_coins(commission_amount)
                 .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
                 .store_uint(0, 32)
@@ -108,6 +92,8 @@ int get_order_status(int order_id) method_id {
                 .end_cell(),
             1
         );
+
+        ;;; send payout to seller
         send_raw_message(
             begin_cell()
                 .store_uint(0x18, 6)
@@ -119,93 +105,7 @@ int get_order_status(int order_id) method_id {
                 .end_cell(),
             1
         );
-        orders_dict.dict_set(64, order_id,
-            begin_cell()
-                .store_slice(sender_addr)
-                .store_slice(seller_addr)
-                .store_coins(total_payment_from_buyer)
-                .store_uint(ORDER_STATUS_PAID_TO_SELLER, 8)
-                .end_cell()
-        );
-        save_data(marketplace_addr, commission_percentage, orders_dict);
-    }
-    elseif (op == OP_REFUND_ORDER) {
-        int order_id = cs~load_uint(64);
-
-        var (order_data_cell, found) = orders_dict.dict_empty?(64, order_id);
-        throw_unless(ERR_ORDER_NOT_FOUND, found);
-
-        slice ds = order_data_cell.begin_parse();
-        slice buyer_addr = ds~load_msg_addr();
-        slice seller_addr = ds~load_msg_addr();
-        int total_original_amount = ds~load_coins();
-        int status = ds~load_uint(8);
-
-        throw_unless(ERR_INVALID_ORDER_STATE_FOR_ACTION, status == ORDER_STATUS_PAID_TO_SELLER);
-        throw_unless(ERR_CONTRACT_BALANCE_INSUFFICIENT, get_balance().first() >= total_original_amount);
-        send_raw_message(
-            begin_cell()
-                .store_uint(0x18, 6)
-                .store_slice(buyer_addr)
-                .store_coins(total_original_amount)
-                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-                .store_uint(0, 32)
-                .store_uint(query_id, 64)
-                .end_cell(),
-            1
-        );
-        orders_dict.dict_set(64, order_id,
-            begin_cell()
-                .store_slice(buyer_addr)
-                .store_slice(seller_addr)
-                .store_coins(total_original_amount)
-                .store_uint(ORDER_STATUS_REFUNDED, 8)
-                .end_cell()
-        );
-        save_data(marketplace_addr, commission_percentage, orders_dict);
-    }
-    elseif (op == OP_MARKETPLACE_CANCEL_ORDER) {
-
-        int order_id = cs~load_uint(64);
-
-        throw_unless(ERR_UNAUTHORIZED_SENDER, equal_slices(sender_addr, marketplace_addr));
-
-        var (order_data_cell, found) = orders_dict.dict_empty?(64, order_id);
-        throw_unless(ERR_ORDER_NOT_FOUND, found);
-
-        slice ds = order_data_cell.begin_parse();
-        slice buyer_addr = ds~load_msg_addr();
-        slice seller_addr = ds~load_msg_addr();
-        int total_original_amount = ds~load_coins();
-        int status = ds~load_uint(8);
-
-        throw_unless(ERR_INVALID_ORDER_STATE_FOR_ACTION, status == ORDER_STATUS_PAID_TO_SELLER);
-
-        throw_unless(ERR_CONTRACT_BALANCE_INSUFFICIENT, get_balance().first() >= total_original_amount);
-
-        send_raw_message(
-            begin_cell()
-                .store_uint(0x18, 6)
-                .store_slice(buyer_addr)
-                .store_coins(total_original_amount)
-                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-                .store_uint(0, 32)
-                .store_uint(query_id, 64)
-                .end_cell(),
-            1
-        );
-
-        orders_dict.dict_set(64, order_id,
-            begin_cell()
-                .store_slice(buyer_addr)
-                .store_slice(seller_addr)
-                .store_coins(total_original_amount)
-                .store_uint(ORDER_STATUS_CANCELLED_BY_MARKETPLACE, 8)
-                .end_cell()
-        );
-        save_data(marketplace_addr, commission_percentage, orders_dict);
-    }
-    else {
+    } else {
         throw(ERR_INVALID_OPCODE);
     }
 }
