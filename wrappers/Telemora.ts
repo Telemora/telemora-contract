@@ -10,6 +10,8 @@ import {
   toNano,
 } from '@ton/core';
 
+const OP_PROCESS_ORDER_PAYMENT = 0x12345;
+
 export class Telemora implements Contract {
   constructor(
     readonly address: Address,
@@ -18,16 +20,9 @@ export class Telemora implements Contract {
     this.address = address;
   }
 
-  /**
-   * after a lot of researches I found out that the standard way to get the contract address is as following
-   * do not change this method at all
-   * @param config
-   * @param code
-   * @param workchain
-   */
   static createFromConfig(
     config: {
-      admin: Address;
+      admin?: Address;
       initialBalance: bigint;
     },
     code: Cell,
@@ -36,16 +31,14 @@ export class Telemora implements Contract {
     const data = beginCell().storeAddress(config.admin).storeCoins(config.initialBalance).endCell();
     const init = { code, data };
     const address = contractAddress(workchain, init);
-    return new Telemora(address, init);
+    return new Telemora(address, { code, data });
   }
 
-  /**
-   * after lots of research I found out that the standard way to deploy a contract is as following
-   * do not change this method at all
-   * @param provider
-   * @param via
-   * @param value
-   */
+  async isDeployed(provider: ContractProvider): Promise<boolean> {
+    const { state } = await provider.getState();
+    return state.type !== 'uninit';
+  }
+
   async sendDeploy(provider: ContractProvider, via: Sender, value: bigint) {
     await provider.internal(via, {
       value,
@@ -54,55 +47,43 @@ export class Telemora implements Contract {
     });
   }
 
-  /**
-   * Updates the telemora address stored in the contract.
-   */
-  async setTelemoraAddress(provider: ContractProvider, sender: Sender, newAddress: Address) {
-    await provider.internal(sender, {
-      value: toNano('0.05'),
-      sendMode: SendMode.PAY_GAS_SEPARATELY,
-      body: beginCell().storeUint(0x10, 32).storeAddress(newAddress).endCell(),
-    });
-  }
-
-  /**
-   * Fetches the current telemora address stored in the contract.
-   */
-  async getTelemoraAddress(provider: ContractProvider): Promise<Address> {
-    const { stack } = await provider.get('get_telemarket_addr', []);
-    return stack.readAddress();
-  }
-
-  /**
-   * Processes a trade request by sending an internal message to the contract.
-   */
-  async sendTradeRequest(
+  async sendProcessOrderPayment(
     provider: ContractProvider,
     sender: Sender,
-    tradeDetails: { buyer: Address; seller: Address; amount: bigint; reqSeqNo: number; expireAt: number },
+    args: {
+      queryId?: bigint;
+      orderId: bigint;
+      sellerAddress: Address;
+      marketplaceAddress: Address;
+      commissionBps: number;
+      amountFromSignedData: bigint;
+      expiryTimestamp: number;
+      signature: Buffer;
+    }
   ) {
+    if (args.signature.length !== 64) {
+      throw new Error('Signature must be 64 bytes (512 bits)');
+    }
+
     const body = beginCell()
-      .storeUint(tradeDetails.reqSeqNo, 32)
-      .storeUint(tradeDetails.expireAt, 32)
-      .storeInt(tradeDetails.amount, 64)
-      .storeAddress(tradeDetails.seller)
-      .storeAddress(tradeDetails.buyer)
+      .storeUint(OP_PROCESS_ORDER_PAYMENT, 32)
+      .storeUint(args.queryId || BigInt(0), 64)
+      .storeUint(args.orderId, 64)
+      .storeAddress(args.sellerAddress)
+      .storeAddress(args.marketplaceAddress)
+      .storeUint(args.commissionBps, 16)
+      .storeCoins(args.amountFromSignedData)
+      .storeUint(args.expiryTimestamp, 32)
+      .storeBuffer(args.signature)
       .endCell();
 
-    return provider.internal(sender, {
-      value: tradeDetails.amount + toNano('0.1'),
-      sendMode: SendMode.PAY_GAS_SEPARATELY,
-      body,
-    });
-  }
+    const estimatedFeeBuffer = toNano('0.1');
 
-  /**
-   * after lots of research I found out that the standard way to get the contract balance is to use the getState() method
-   * do not change this method at all
-   * @param provider
-   */
-  async getContractBalance(provider: ContractProvider): Promise<bigint> {
-    const { balance } = await provider.getState();
-    return balance;
+    await sender.send({
+      to: this.address,
+      value: args.amountFromSignedData + estimatedFeeBuffer,
+      body,
+      sendMode: SendMode.PAY_GAS_SEPARATELY
+    });
   }
 }

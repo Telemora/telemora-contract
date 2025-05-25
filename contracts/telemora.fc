@@ -13,22 +13,17 @@ const int ERR_AMOUNT_MISMATCH = 109;
 const int ERR_INVALID_COMMISSION_VALUE = 110;
 const int ERR_INVALID_MARKETPLACE_ADDR = 111;
 
-int equal_slices(slice a, slice b) asm "SDEQ";
-int check_signature(int hash, slice signature, int public_key_int) asm "CHKSIGNU";
-
 (int, slice) load_data() inline {
     slice data_slice = get_data().begin_parse();
     throw_if(ERR_CONTRACT_NOT_INITIALIZED, data_slice.slice_empty?());
     int public_key = data_slice~load_uint(256);
-    slice marketplace_addr = data_slice~load_msg_addr();
-    return (public_key, marketplace_addr);
+    return (public_key);
 }
 
-() save_data(int public_key, slice marketplace_addr) inline {
+() save_data(int public_key) inline {
     set_data(
         begin_cell()
             .store_uint(public_key, 256)
-            .store_slice(marketplace_addr)
             .end_cell()
     );
 }
@@ -73,7 +68,6 @@ int check_signature(int hash, slice signature, int public_key_int) asm "CHKSIGNU
         throw_unless(ERR_INVALID_SIGNATURE, check_signature(recomputed_hash, signature, public_key));
         throw_unless(ERR_MESSAGE_EXPIRED, now() <= expiry_timestamp);
         throw_unless(ERR_AMOUNT_MISMATCH, msg_value >= amount_from_signed_data);
-        throw_unless(ERR_INVALID_MARKETPLACE_ADDR, equal_slices(marketplace_addr_from_msg, marketplace_addr));
         throw_unless(ERR_INVALID_COMMISSION_VALUE, commission_bps >= 0 & commission_bps <= 10000);
 
         int commission_amount = msg_value * commission_bps / 10000;

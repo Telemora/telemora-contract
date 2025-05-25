@@ -44,7 +44,7 @@ describe('Telemora Smart Contract Tests', () => {
     const expireAt = Math.floor(Date.now() / 1000) + 600; // Expires in 10 minutes
 
     // Buyer sends a trade request to the Telemora contract
-    const result = await telemora.sendTradeRequest(buyer.getSender(), {
+    const result = await telemora.sendProcessOrderPayment(buyer.getSender(), {
       buyer: buyer.address,
       seller: seller.address,
       amount,
@@ -77,7 +77,7 @@ describe('Telemora Smart Contract Tests', () => {
     const expireAt = Math.floor(Date.now() / 1000) + 600;
 
     // First trade request
-    const firstResult = await telemora.sendTradeRequest(buyer.getSender(), {
+    const firstResult = await telemora.sendProcessOrderPayment(buyer.getSender(), {
       buyer: buyer.address,
       seller: seller.address,
       amount,
@@ -93,7 +93,7 @@ describe('Telemora Smart Contract Tests', () => {
 
     // Attempt to send the same request again (should fail)
     await expect(
-      telemora.sendTradeRequest(buyer.getSender(), {
+      telemora.sendProcessOrderPayment(buyer.getSender(), {
         buyer: buyer.address,
         seller: seller.address,
         amount,

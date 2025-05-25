@@ -5,13 +5,10 @@ import { compile, NetworkProvider } from '@ton/blueprint';
 export async function run(provider: NetworkProvider) {
   const telemoraCode = await compile('Telemora');
 
-  const initialCounterValue = 0;
-  const initialId = Math.floor(Math.random() * 10000);
-
   const telemora = Telemora.createFromConfig(
     {
-      admin: initialId,
-      telemora: initialCounterValue,
+      admin: provider.sender().address,
+      initialBalance: toNano('0.05'),
     },
     telemoraCode,
   );
@@ -30,6 +27,5 @@ export async function run(provider: NetworkProvider) {
     provider.ui().write('Contract deployed successfully!');
   }
 
-  const currentCounter = await openedContract.init;
-  provider.ui().write(`Initial telemora value: ${currentCounter}`);
+  provider.ui().write(`Initial telemora value`);
 }
