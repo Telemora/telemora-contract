@@ -3,29 +3,19 @@ import { Telemora } from '../wrappers/Telemora';
 import { compile, NetworkProvider } from '@ton/blueprint';
 
 export async function run(provider: NetworkProvider) {
-  const telemoraCode = await compile('Telemora');
-
-  const telemora = Telemora.createFromConfig(
-    {
-      admin: provider.sender().address,
-      initialBalance: toNano('0.05'),
-    },
-    telemoraCode,
+  const counter = provider.open(
+    Telemora.createFromConfig(
+      {
+        id: Math.floor(Math.random() * 10000),
+        counter: 0,
+      },
+      await compile('Counter')
+    )
   );
 
-  const openedContract = provider.open(telemora);
+  await counter.sendDeploy(provider.sender(), toNano('0.05'));
 
-  if (await openedContract.isDeployed()) {
-    provider.ui().write('Contract already deployed!');
-  } else {
-    provider.ui().write('Deploying contract...');
+  await provider.waitForDeploy(counter.address);
 
-    await openedContract.sendDeploy(provider.sender(), toNano('0.05'));
-
-    await provider.waitForDeploy(telemora.address);
-
-    provider.ui().write('Contract deployed successfully!');
-  }
-
-  provider.ui().write(`Initial telemora value`);
+  // console.log('ID', await counter.getID());
 }

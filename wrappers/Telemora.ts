@@ -10,33 +10,33 @@ import {
   toNano,
 } from '@ton/core';
 
-const OP_PROCESS_ORDER_PAYMENT = 0x12345;
+export type TelemoraConfig = {
+  marketplaceAddress: Address;
+  commissionBps: number;
+};
+
+export function telemoraConfigToCell(config: TelemoraConfig): Cell {
+  return beginCell().storeAddress(config.marketplaceAddress).storeUint(config.commissionBps, 32).endCell();
+}
+
+export const Opcodes = {
+  processOrderPayment: 0x7e8764ef,
+};
 
 export class Telemora implements Contract {
   constructor(
     readonly address: Address,
     readonly init?: { code: Cell; data: Cell },
-  ) {
-    this.address = address;
+  ) {}
+
+  static createFromAddress(address: Address) {
+    return new Telemora(address);
   }
 
-  static createFromConfig(
-    config: {
-      admin?: Address;
-      initialBalance: bigint;
-    },
-    code: Cell,
-    workchain = 0,
-  ): Telemora {
-    const data = beginCell().storeAddress(config.admin).storeCoins(config.initialBalance).endCell();
+  static createFromConfig(config: TelemoraConfig, code: Cell, workchain = 0) {
+    const data = telemoraConfigToCell(config);
     const init = { code, data };
-    const address = contractAddress(workchain, init);
-    return new Telemora(address, { code, data });
-  }
-
-  async isDeployed(provider: ContractProvider): Promise<boolean> {
-    const { state } = await provider.getState();
-    return state.type !== 'uninit';
+    return new Telemora(contractAddress(workchain, init), init);
   }
 
   async sendDeploy(provider: ContractProvider, via: Sender, value: bigint) {
@@ -49,9 +49,9 @@ export class Telemora implements Contract {
 
   async sendProcessOrderPayment(
     provider: ContractProvider,
-    sender: Sender,
-    args: {
-      queryId?: bigint;
+    via: Sender,
+    opts: {
+      queryID?: number;
       orderId: bigint;
       sellerAddress: Address;
       marketplaceAddress: Address;
@@ -59,31 +59,28 @@ export class Telemora implements Contract {
       amountFromSignedData: bigint;
       expiryTimestamp: number;
       signature: Buffer;
-    }
+      value: bigint;
+    },
   ) {
-    if (args.signature.length !== 64) {
+    if (opts.signature.length !== 64) {
       throw new Error('Signature must be 64 bytes (512 bits)');
     }
 
-    const body = beginCell()
-      .storeUint(OP_PROCESS_ORDER_PAYMENT, 32)
-      .storeUint(args.queryId || BigInt(0), 64)
-      .storeUint(args.orderId, 64)
-      .storeAddress(args.sellerAddress)
-      .storeAddress(args.marketplaceAddress)
-      .storeUint(args.commissionBps, 16)
-      .storeCoins(args.amountFromSignedData)
-      .storeUint(args.expiryTimestamp, 32)
-      .storeBuffer(args.signature)
-      .endCell();
-
     const estimatedFeeBuffer = toNano('0.1');
 
-    await sender.send({
-      to: this.address,
-      value: args.amountFromSignedData + estimatedFeeBuffer,
-      body,
-      sendMode: SendMode.PAY_GAS_SEPARATELY
+    await provider.internal(via, {
+      value: opts.value + estimatedFeeBuffer,
+      sendMode: SendMode.PAY_GAS_SEPARATELY,
+      body: beginCell()
+        .storeUint(Opcodes.processOrderPayment, 32)
+        .storeUint(opts.orderId, 64)
+        .storeAddress(opts.sellerAddress)
+        .storeAddress(opts.marketplaceAddress)
+        .storeUint(opts.commissionBps, 16)
+        .storeCoins(opts.amountFromSignedData)
+        .storeUint(opts.expiryTimestamp, 32)
+        .storeBuffer(opts.signature)
+        .endCell()
     });
   }
 }
