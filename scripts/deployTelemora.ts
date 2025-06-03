@@ -12,7 +12,7 @@ export async function run(provider: NetworkProvider) {
     Telemora.createFromConfig(
       {
         adminAddress: adminAddress,
-        commissionBps: 500
+        commissionBps: 500,
       },
       await compile('Telemora',
     ),

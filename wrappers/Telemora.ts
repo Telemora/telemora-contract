@@ -69,6 +69,11 @@ export class Telemora implements Contract {
     });
   }
 
+  async getBalance(provider: ContractProvider) {
+    const result = await provider.getState();
+    return Number(result.balance.toString());
+  }
+
   async sendMakePayment(provider: ContractProvider, via: Sender, sellerAddress: Address, value: bigint) {
     const messageBody = beginCell()
       .storeUint(Opcodes.make_payment, 32)
