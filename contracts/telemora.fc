@@ -1,9 +1,30 @@
 #include "imports/stdlib.fc";
 
-const int OP_WITHDRAW_ADMIN = 0x01;
-const int OP_MAKE_PAYMENT = 0x02;
+const op::withdraw_admin = "op::withdraw_admin"c;
+const op::make_payment = "op::make_payment"c;
+
+global slice admin_addr;
+global int percent;
 
 int are_slices_equal?(slice a, slice b) asm "SDEQ";
+
+() save_data() impure {
+    set_data(
+        begin_cell()
+            .store_slice(admin_addr)
+            .store_uint(percent, 9)
+            .end_cell()
+    );
+}
+
+() load_data() impure {
+    var ds = get_data().begin_parse();
+
+    admin_addr = ds~load_msg_addr();
+    percent = ds~load_uint(9);
+
+    ds.end_parse();
+}
 
 (slice) get_admin_address() method_id {
     slice ds = get_data().begin_parse();
@@ -20,7 +41,7 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
         return 0;
     }
     ds~load_msg_addr();
-    int commission = ds~load_uint(8);
+    int commission = ds~load_uint(9);
     return commission;
 }
 
@@ -30,22 +51,22 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
     return balance_nano;
 }
 
-
-() save_state(slice admin_addr, int percent) impure {
-    builder b = begin_cell()
-        .store_slice(admin_addr)
-        .store_uint(percent, 8);
-    set_data(b.end_cell());
-}
-
 () recv_internal(int msg_value, cell in_msg_cell, slice in_msg) {
-    int opcode = in_msg~load_uint(32);
+    if (in_msg.slice_empty?()) {
+        return ();
+    }
+    slice cs = in_msg_cell.begin_parse();
+    int flags = cs~load_uint(4);
 
-    if (opcode == OP_WITHDRAW_ADMIN) {
-        slice admin = get_admin_address();
+    load_data();
+
+    int op = in_msg~load_uint(32);
+    int query_id = in_msg~load_uint(64);
+
+    if (op == op::withdraw_admin) {
         slice msg_sender = in_msg~load_msg_addr();
 
-        throw_unless(are_slices_equal?(admin, msg_sender), 101);
+        throw_unless(are_slices_equal?(admin_addr, msg_sender), 101);
 
         int amount = in_msg~load_coins();
 
@@ -53,15 +74,14 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
         int reserve = 10000000;
         throw_unless(amount + reserve <= balance_nano, 102);
 
-        int percent = get_commission_percent();
         int stored_commission = get_current_commission_pool_balance();
         throw_unless(amount <= stored_commission, 103);
 
-        save_state(admin, percent);
+        save_data();
 
         cell msg = begin_cell()
             .store_uint(0x18, 6)
-            .store_slice(admin)
+            .store_slice(admin_addr)
             .store_coins(amount)
             .store_uint(0, 1 + 4 + 4 + 64 + 32)
             .store_uint(0, 1)
@@ -71,11 +91,10 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
         send_raw_message(msg, 3);
     }
 
-    if (opcode == OP_MAKE_PAYMENT) {
+    if (op == op::make_payment) {
         slice seller = in_msg~load_msg_addr();
         int amount = msg_value;
 
-        int percent = get_commission_percent();
         int fee = amount * percent / 100;
         int payout = amount - fee;
 
@@ -87,4 +106,6 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
             .end_cell();
         send_raw_message(msg, 3);
     }
+
+    throw(0xffff);
 }

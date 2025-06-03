@@ -11,12 +11,12 @@ import {
 } from '@ton/core';
 
 export type TelemoraConfig = {
-  adminAddress: Address;
-  commissionBps: number;
+  admin_addr: Address;
+  percent: number;
 };
 
 export function telemoraConfigToCell(config: TelemoraConfig): Cell {
-  return beginCell().storeAddress(config.adminAddress).storeUint(config.commissionBps, 32).endCell();
+  return beginCell().storeAddress(config.admin_addr).storeUint(config.percent, 9).endCell();
 }
 
 export const Opcodes = {
