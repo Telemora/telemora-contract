@@ -1,7 +1,9 @@
 #include "imports/stdlib.fc";
 
-const int op_withdraw_admin = 0x01;
-const int op_make_payment = 0x02;
+const int OP_WITHDRAW_ADMIN = 0x01;
+const int OP_MAKE_PAYMENT = 0x02;
+
+int are_slices_equal?(slice a, slice b) asm "SDEQ";
 
 (slice) get_admin_address() method_id {
     slice ds = get_data().begin_parse();
@@ -24,7 +26,8 @@ const int op_make_payment = 0x02;
 
 
 (int) get_current_commission_pool_balance() method_id {
-    return get_balance();
+    [int balance_nano, cell extra_currencies_dict] = get_balance();
+    return balance_nano;
 }
 
 
@@ -38,17 +41,17 @@ const int op_make_payment = 0x02;
 () recv_internal(int msg_value, cell in_msg_cell, slice in_msg) {
     int opcode = in_msg~load_uint(32);
 
-    if (opcode == op_withdraw_admin) {
+    if (opcode == OP_WITHDRAW_ADMIN) {
         slice admin = get_admin_address();
         slice msg_sender = in_msg~load_msg_addr();
 
-        throw_unless(msg_sender == admin, 101);
+        throw_unless(are_slices_equal?(admin, msg_sender), 101);
 
         int amount = in_msg~load_coins();
 
-        int balance = get_balance();
+        [int balance_nano, cell extra_currencies_dict] = get_balance();
         int reserve = 10000000;
-        throw_unless(amount + reserve <= balance, 102);
+        throw_unless(amount + reserve <= balance_nano, 102);
 
         int percent = get_commission_percent();
         int stored_commission = get_current_commission_pool_balance();
@@ -56,7 +59,7 @@ const int op_make_payment = 0x02;
 
         save_state(admin, percent);
 
-        builder msg = begin_cell()
+        cell msg = begin_cell()
             .store_uint(0x18, 6)
             .store_slice(admin)
             .store_coins(amount)
@@ -66,10 +69,9 @@ const int op_make_payment = 0x02;
             .end_cell();
 
         send_raw_message(msg, 3);
-        return (0);
     }
 
-    if (opcode == op_make_payment) {
+    if (opcode == OP_MAKE_PAYMENT) {
         slice seller = in_msg~load_msg_addr();
         int amount = msg_value;
 
@@ -77,18 +79,12 @@ const int op_make_payment = 0x02;
         int fee = amount * percent / 100;
         int payout = amount - fee;
 
-        int stored_commission = get_current_commission_pool_balance();
-        slice a = get_admin_address();
-        save_state(a, percent);
-
-        builder msg = begin_cell()
+        cell msg = begin_cell()
             .store_uint(0x18, 6)
             .store_slice(seller)
             .store_coins(payout)
             .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
             .end_cell();
         send_raw_message(msg, 3);
-        return (0);
     }
-    return (0);
 }

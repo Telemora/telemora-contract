@@ -11,16 +11,17 @@ import {
 } from '@ton/core';
 
 export type TelemoraConfig = {
-  marketplaceAddress: Address;
+  adminAddress: Address;
   commissionBps: number;
 };
 
 export function telemoraConfigToCell(config: TelemoraConfig): Cell {
-  return beginCell().storeAddress(config.marketplaceAddress).storeUint(config.commissionBps, 32).endCell();
+  return beginCell().storeAddress(config.adminAddress).storeUint(config.commissionBps, 32).endCell();
 }
 
 export const Opcodes = {
-  processOrderPayment: 0x7e8764ef,
+  OP_WITHDRAW_ADMIN: 0x01,
+  OP_MAKE_PAYMENT: 0x02,
 };
 
 export class Telemora implements Contract {
@@ -47,40 +48,39 @@ export class Telemora implements Contract {
     });
   }
 
-  async sendProcessOrderPayment(
+  async sendMakePayment(
     provider: ContractProvider,
     via: Sender,
     opts: {
-      queryID?: number;
-      orderId: bigint;
       sellerAddress: Address;
-      marketplaceAddress: Address;
-      commissionBps: number;
-      amountFromSignedData: bigint;
-      expiryTimestamp: number;
-      signature: Buffer;
       value: bigint;
+      queryID?: number;
     },
   ) {
-    if (opts.signature.length !== 64) {
-      throw new Error('Signature must be 64 bytes (512 bits)');
-    }
-
     const estimatedFeeBuffer = toNano('0.1');
 
     await provider.internal(via, {
       value: opts.value + estimatedFeeBuffer,
       sendMode: SendMode.PAY_GAS_SEPARATELY,
       body: beginCell()
-        .storeUint(Opcodes.processOrderPayment, 32)
-        .storeUint(opts.orderId, 64)
+        .storeUint(Opcodes.OP_MAKE_PAYMENT, 32)
+        .storeUint(opts.queryID ?? 0, 64)
         .storeAddress(opts.sellerAddress)
-        .storeAddress(opts.marketplaceAddress)
-        .storeUint(opts.commissionBps, 16)
-        .storeCoins(opts.amountFromSignedData)
-        .storeUint(opts.expiryTimestamp, 32)
-        .storeBuffer(opts.signature)
-        .endCell()
+        .endCell(),
     });
+  }
+
+  async getAdminAddress(provider: ContractProvider) {
+    const result = await provider.get('get_admin_address', []);
+    const adminAddress = result.stack.readAddressOpt();
+    if (adminAddress) {
+      return adminAddress.toString();
+    }
+    return null;
+  }
+
+  async getCommissionPercent(provider: ContractProvider) {
+    const result = await provider.get('get_commission_percent', []);
+    return result.stack.readNumber();
   }
 }

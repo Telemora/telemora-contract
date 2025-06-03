@@ -3,19 +3,25 @@ import { Telemora } from '../wrappers/Telemora';
 import { compile, NetworkProvider } from '@ton/blueprint';
 
 export async function run(provider: NetworkProvider) {
-  const counter = provider.open(
+  const adminAddress = provider.sender().address;
+  if (!adminAddress) {
+    throw new Error('No admin address provided');
+  }
+
+  const telemora = provider.open(
     Telemora.createFromConfig(
       {
-        id: Math.floor(Math.random() * 10000),
-        counter: 0,
+        adminAddress,
+        commissionBps: 500,
       },
-      await compile('Counter')
-    )
+      await compile('Telemora',
+    ),
   );
 
-  await counter.sendDeploy(provider.sender(), toNano('0.05'));
+  await telemora.sendDeploy(provider.sender(), toNano('0.05'));
 
-  await provider.waitForDeploy(counter.address);
+  await provider.waitForDeploy(telemora.address);
 
-  // console.log('ID', await counter.getID());
+  console.log('Admin Address', await telemora.getAdminAddress());
+  console.log('Commission Percent', await telemora.getCommissionPercent());
 }
