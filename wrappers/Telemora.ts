@@ -20,8 +20,8 @@ export function telemoraConfigToCell(config: TelemoraConfig): Cell {
 }
 
 export const Opcodes = {
-  OP_WITHDRAW_ADMIN: 0x01,
-  OP_MAKE_PAYMENT: 0x02,
+  withdraw_admin: 0xf7a40b5b,
+  make_payment: 0x7d9dcb09,
 };
 
 export class Telemora implements Contract {
@@ -48,25 +48,38 @@ export class Telemora implements Contract {
     });
   }
 
-  async sendMakePayment(
+  async sendWithdrawAdmin(
     provider: ContractProvider,
     via: Sender,
-    opts: {
-      sellerAddress: Address;
-      value: bigint;
-      queryID?: number;
-    },
+    adminAddress: Address,
+    amount: bigint,
+    value: bigint = toNano('0.05'),
   ) {
-    const estimatedFeeBuffer = toNano('0.1');
+    const messageBody = beginCell()
+      .storeUint(Opcodes.withdraw_admin, 32)
+      .storeUint(0, 64)
+      .storeAddress(adminAddress)
+      .storeCoins(amount)
+      .endCell();
 
     await provider.internal(via, {
-      value: opts.value + estimatedFeeBuffer,
-      sendMode: SendMode.PAY_GAS_SEPARATELY,
-      body: beginCell()
-        .storeUint(Opcodes.OP_MAKE_PAYMENT, 32)
-        .storeUint(opts.queryID ?? 0, 64)
-        .storeAddress(opts.sellerAddress)
-        .endCell(),
+      value: value,
+      bounce: true,
+      body: messageBody,
+    });
+  }
+
+  async sendMakePayment(provider: ContractProvider, via: Sender, sellerAddress: Address, value: bigint) {
+    const messageBody = beginCell()
+      .storeUint(Opcodes.make_payment, 32)
+      .storeUint(0, 64)
+      .storeAddress(sellerAddress)
+      .endCell();
+
+    await provider.internal(via, {
+      value: value,
+      bounce: true,
+      body: messageBody,
     });
   }
 
