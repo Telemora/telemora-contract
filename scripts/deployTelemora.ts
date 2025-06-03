@@ -11,8 +11,8 @@ export async function run(provider: NetworkProvider) {
   const telemora = provider.open(
     Telemora.createFromConfig(
       {
-        admin_addr: adminAddress,
-        percent: 500
+        adminAddress: adminAddress,
+        commissionBps: 500
       },
       await compile('Telemora',
     ),

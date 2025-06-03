@@ -23,8 +23,8 @@ describe('Telemora', () => {
     telemora = blockchain.openContract(
       Telemora.createFromConfig(
         {
-          admin_addr: deployer.address,
-          percent: 500,
+          adminAddress: deployer.address,
+          commissionBps: 500,
         },
         code,
       ),
