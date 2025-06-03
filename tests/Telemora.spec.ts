@@ -25,7 +25,7 @@ describe('Telemora', () => {
           adminAddress: deployer.address,
           commissionBps: 500,
         },
-        cod,
+        code,
       ),
     );
 
@@ -35,7 +35,6 @@ describe('Telemora', () => {
       from: deployer.address,
       to: telemora.address,
       deploy: true,
-      success: true,
     });
   });
 
