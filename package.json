@@ -1,6 +1,27 @@
 {
   "name": "telemora-contract",
   "version": "0.0.1",
+  "private": true,
+  "author": {
+    "name": "Hamed Arghavan",
+    "email": "hamedaravane@gmail.com",
+    "url": "https://github.com/hamedaravane"
+  },
+  "bugs": {
+    "url": "https://github.com/hamedaravane/telemora-contract/issues"
+  },
+  "repository": {
+    "url": "https://github.com/hamedaravane/telemora-contract"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx}": [
+      "eslint --config eslint.config.mjs --fix",
+      "prettier --write"
+    ],
+    "*.{json,css}": [
+      "prettier --write"
+    ]
+  },
   "scripts": {
     "start": "blueprint run",
     "build": "blueprint build",
