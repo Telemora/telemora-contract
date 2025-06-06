@@ -20,8 +20,8 @@ export function telemoraConfigToCell(config: TelemoraConfig): Cell {
 }
 
 export const Opcodes = {
-  withdraw_admin: 0xf7a40b5b,
-  make_payment: 0x7d9dcb09,
+  admin_withdraw: 0x4cdd6f51,
+  payment: 0x1b40800,
 };
 
 export class Telemora implements Contract {
@@ -56,7 +56,7 @@ export class Telemora implements Contract {
     value: bigint = toNano('0.05'),
   ) {
     const messageBody = beginCell()
-      .storeUint(Opcodes.withdraw_admin, 32)
+      .storeUint(Opcodes.admin_withdraw, 32)
       .storeUint(0, 64)
       .storeAddress(adminAddress)
       .storeCoins(amount)
@@ -76,7 +76,7 @@ export class Telemora implements Contract {
 
   async sendMakePayment(provider: ContractProvider, via: Sender, sellerAddress: Address, value: bigint) {
     const messageBody = beginCell()
-      .storeUint(Opcodes.make_payment, 32)
+      .storeUint(Opcodes.payment, 32)
       .storeUint(0, 64)
       .storeAddress(sellerAddress)
       .endCell();

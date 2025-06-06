@@ -66,7 +66,7 @@ describe('Telemora', () => {
       from: telemora.address,
       to: seller.address,
       value: paymentValue,
-      body: beginCell().storeUint(Opcodes.make_payment, 32).storeUint(0, 64).storeAddress(seller.address).endCell(),
+      body: beginCell().storeUint(Opcodes.payment, 32).storeUint(0, 64).storeAddress(seller.address).endCell(),
     });
 
     const finalSellerBalance = await seller.getBalance();

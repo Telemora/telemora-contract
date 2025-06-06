@@ -1,7 +1,7 @@
 #include "imports/stdlib.fc";
 
-const op::withdraw_admin = "op::withdraw_admin"c;
-const op::make_payment = "op::make_payment"c;
+const op::admin_withdraw = "op::admin_withdraw"c;
+const op::payment = "op::payment"c;
 
 global slice admin_addr;
 global int percent;
@@ -55,15 +55,12 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
     if (in_msg.slice_empty?()) {
         return ();
     }
-    slice cs = in_msg_cell.begin_parse();
-    int flags = cs~load_uint(4);
 
     load_data();
 
     int op = in_msg~load_uint(32);
-    int query_id = in_msg~load_uint(64);
 
-    if (op == op::withdraw_admin) {
+    if (op == op::admin_withdraw) {
         slice msg_sender = in_msg~load_msg_addr();
 
         throw_unless(are_slices_equal?(admin_addr, msg_sender), 101);
@@ -91,7 +88,7 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
         send_raw_message(msg, 3);
     }
 
-    if (op == op::make_payment) {
+    if (op == op::payment) {
         slice seller = in_msg~load_msg_addr();
         int amount = msg_value;
 
@@ -99,12 +96,11 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
         int payout = amount - fee;
 
         cell msg = begin_cell()
-            .store_uint(0x18, 6)
+            .store_uint(0x10, 6)
             .store_slice(seller)
             .store_coins(payout)
-            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
             .end_cell();
-        send_raw_message(msg, 3);
+        send_raw_message(msg, 64);
     }
 
     throw(0xffff);
