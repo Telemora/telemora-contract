@@ -7,7 +7,7 @@ import {
   ContractProvider,
   Sender,
   SendMode,
-  toNano,
+  TupleBuilder
 } from '@ton/core';
 
 export type TelemoraConfig = {
@@ -16,7 +16,7 @@ export type TelemoraConfig = {
 };
 
 export function telemoraConfigToCell(config: TelemoraConfig): Cell {
-  return beginCell().storeAddress(config.adminAddress).storeUint(config.commissionBps, 9).endCell();
+  return beginCell().storeAddress(config.adminAddress).storeInt(config.commissionBps, 11).endCell();
 }
 
 export const Opcodes = {
@@ -48,44 +48,86 @@ export class Telemora implements Contract {
     });
   }
 
-  async sendWithdrawAdmin(
-    provider: ContractProvider,
-    via: Sender,
-    adminAddress: Address,
-    amount: bigint,
-    value: bigint = toNano('0.05'),
-  ) {
-    const messageBody = beginCell()
-      .storeUint(Opcodes.admin_withdraw, 32)
-      .storeUint(0, 64)
-      .storeAddress(adminAddress)
-      .storeCoins(amount)
-      .endCell();
-
-    await provider.internal(via, {
-      value: value,
-      bounce: true,
-      body: messageBody,
-    });
-  }
-
   async getBalance(provider: ContractProvider) {
     const result = await provider.getState();
     return Number(result.balance.toString());
   }
 
-  async sendMakePayment(provider: ContractProvider, via: Sender, sellerAddress: Address, value: bigint) {
-    const messageBody = beginCell()
-      .storeUint(Opcodes.payment, 32)
-      .storeUint(0, 64)
-      .storeAddress(sellerAddress)
+  /**
+   * @description Wrapper method for sending an 'admin_withdraw' message to the FunC contract.
+   * This method constructs and sends the internal message needed to invoke the 'admin_withdraw'
+   * operation in your contract's `recv_internal` function.
+   *
+   * @param provider Interface to interact with the blockchain [5, 12].
+   * @param via Object representing the message sender (typically the user's wallet) [12].
+   * @param opts Options object containing:
+   *   - value: The amount of TON (as bigint) sent to the contract. Used to pay for gas and possibly
+   *            increase the contract balance [5, 17].
+   *   - senderAddress: The address of the sender (typically the admin's address) [18, 19].
+   *   - withdrawAmount: The amount of TON (as bigint) to withdraw [15, 20].
+   *   - queryID?: Optional 64-bit ID for request-response tracking [4, 15].
+   */
+  async sendAdminWithdraw(
+    provider: ContractProvider,
+    via: Sender,
+    opts: {
+      value: bigint;
+      senderAddress: Address;
+      withdrawAmount: bigint;
+      queryID?: number;
+    },
+  ) {
+    const body = beginCell()
+      .storeUint(Opcodes.admin_withdraw, 32)
+      .storeAddress(opts.senderAddress)
+      .storeCoins(opts.withdrawAmount)
       .endCell();
 
     await provider.internal(via, {
-      value: value,
-      bounce: true,
-      body: messageBody,
+      value: opts.value,
+      sendMode: SendMode.PAY_GAS_SEPARATELY + SendMode.IGNORE_ERRORS,
+      body: body,
     });
+  }
+
+  /**
+   * @description Wrapper method for sending a 'payment' message to the FunC contract.
+   * This method constructs and sends the internal message needed to invoke the 'payment'
+   * operation in your contract's `recv_internal` function.
+   *
+   * @param provider Interface to interact with the blockchain [5, 12].
+   * @param via Object representing the message sender [12].
+   * @param opts Options object containing:
+   *   - value: The amount of TON (as bigint) sent to the contract. This value
+   *            is treated as `msg_value` in FunC's `recv_internal`, and is used
+   *            to calculate the commission (via commission_deduction) [5, 17].
+   *   - sellerAddress: The seller’s address for the payment operation [18, 19].
+   *   - queryID?: Optional 64-bit ID for request-response tracking [4, 15].
+   */
+  async sendPayment(
+    provider: ContractProvider,
+    via: Sender,
+    opts: {
+      value: bigint;
+      sellerAddress: Address;
+      queryID?: number;
+    ,
+  ) {
+    const body = beginCell().storeUint(Opcodes.payment, 32).storeAddress(opts.sellerAddress).endCell();
+
+    await provider.internal(via, {
+      value: opts.value,
+      sendMode: SendMode.PAY_GAS_SEPARATELY + SendMode.IGNORE_ERRORS,
+      body: body
+    });
+  }
+
+  async getCommissionDeduction(provider: ContractProvider, value: bigint) {
+    const stack = new TupleBuilder();
+    stack.writeNumber(value);
+    const args = stack.build();
+    const result = await provider.get('get_commission_deduction', args);
+    return result.stack.readBigNumber();
   }
 
   async getAdminAddress(provider: ContractProvider) {

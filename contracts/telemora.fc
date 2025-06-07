@@ -1,48 +1,40 @@
 #include "imports/stdlib.fc";
+#include "imports/mathlib.fc";
 
 const op::admin_withdraw = "op::admin_withdraw"c;
 const op::payment = "op::payment"c;
 
-global slice admin_addr;
-global int percent;
+global slice ctx_admin_addr;
+global int ctx_percent;
 
 int are_slices_equal?(slice a, slice b) asm "SDEQ";
-
-() save_data() impure {
-    set_data(
-        begin_cell()
-            .store_slice(admin_addr)
-            .store_uint(percent, 9)
-            .end_cell()
-    );
-}
 
 () load_data() impure {
     var ds = get_data().begin_parse();
 
-    admin_addr = ds~load_msg_addr();
-    percent = ds~load_uint(9);
+    ctx_admin_addr = ds~load_msg_addr();
+    ctx_percent = ds~load_int(11);
 
     ds.end_parse();
 }
 
+() save_data() impure {
+    set_data(
+        begin_cell()
+            .store_slice(ctx_admin_addr)
+            .store_int(ctx_percent, 11)
+            .end_cell()
+    );
+}
+
 (slice) get_admin_address() method_id {
-    slice ds = get_data().begin_parse();
-    if (ds.slice_empty?()) {
-        return null();
-    }
-    slice admin_addr = ds~load_msg_addr();
-    return admin_addr;
+    load_data();
+    return ctx_admin_addr;
 }
 
 (int) get_commission_percent() method_id {
-    slice ds = get_data().begin_parse();
-    if (ds.slice_empty?()) {
-        return 0;
-    }
-    ds~load_msg_addr();
-    int commission = ds~load_uint(9);
-    return commission;
+    load_data();
+    return ctx_percent;
 }
 
 (int) get_current_commission_pool_balance() method_id {
@@ -50,13 +42,15 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
     return balance_nano;
 }
 
-(int) commission_deduction(int amount) inline {
-    int fee = amount * percent / 100;
-    return amount - fee;
+(int) get_commission_deduction(int amount) method_id {
+    load_data();
+    int fee = muldiv(amount, ctx_percent, 10000);
+    int deducted = amount - fee;
+    return deducted;
 }
 
 () withdraw(slice msg_sender, int amount) impure inline {
-    throw_unless(are_slices_equal?(admin_addr, msg_sender), 101);
+    throw_unless(are_slices_equal?(ctx_admin_addr, msg_sender), 101);
 
     [int balance_nano, cell extra_currencies_dict] = get_balance();
     int reserve = 10000000;
@@ -69,7 +63,7 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
 
     var msg_body = begin_cell()
         .store_uint(0x18, 6)
-        .store_slice(admin_addr)
+        .store_slice(ctx_admin_addr)
         .store_coins(amount)
         .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
         .store_uint(0, 32)
@@ -105,7 +99,7 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
 
     if (op == op::payment) {
         slice seller = in_msg~load_msg_addr();
-        int payout = commission_deduction(msg_value);
+        int payout = get_commission_deduction(msg_value);
 
         send_payment(seller, payout);
     }
