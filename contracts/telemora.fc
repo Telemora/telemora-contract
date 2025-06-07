@@ -1,5 +1,4 @@
 #include "imports/stdlib.fc";
-#include "imports/mathlib.fc";
 
 const op::admin_withdraw = "op::admin_withdraw"c;
 const op::payment = "op::payment"c;
@@ -42,14 +41,15 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
     return balance_nano;
 }
 
-(int) get_commission_deduction(int amount) method_id {
+(int) calc_commission_deduction(int amount) inline {
     load_data();
     int fee = muldiv(amount, ctx_percent, 10000);
     int deducted = amount - fee;
     return deducted;
 }
 
-() withdraw(slice msg_sender, int amount) impure inline {
+() send_withdraw(slice msg_sender, int amount) impure inline {
+    load_data();
     throw_unless(are_slices_equal?(ctx_admin_addr, msg_sender), 101);
 
     [int balance_nano, cell extra_currencies_dict] = get_balance();
@@ -58,8 +58,6 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
 
     int stored_commission = get_current_commission_pool_balance();
     throw_unless(amount <= stored_commission, 103);
-
-    save_data();
 
     var msg_body = begin_cell()
         .store_uint(0x18, 6)
@@ -72,11 +70,11 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
     send_raw_message(msg_body, 64);
 }
 
-() send_payment(slice destination_address, int amount) impure inline {
+() send_payment(slice seller_addr, int payout) impure inline {
     var msg = begin_cell()
         .store_uint(0x10, 6)
-        .store_slice(destination_address)
-        .store_coins(amount)
+        .store_slice(seller_addr)
+        .store_coins(payout)
         .end_cell();
     send_raw_message(msg, 64);
 }
@@ -86,21 +84,19 @@ int are_slices_equal?(slice a, slice b) asm "SDEQ";
         return ();
     }
 
-    load_data();
-
     int op = in_msg~load_uint(32);
 
     if (op == op::admin_withdraw) {
-        slice msg_sender = in_msg~load_msg_addr();
-        int amount = in_msg~load_coins();
+        slice msg_addr = in_msg~load_msg_addr();
+        int value = in_msg~load_coins();
 
-        withdraw(msg_sender, amount);
+        send_withdraw(msg_addr, value);
     }
 
     if (op == op::payment) {
-        slice seller = in_msg~load_msg_addr();
-        int payout = get_commission_deduction(msg_value);
+        slice msg_addr = in_msg~load_msg_addr();
+        int payout = calc_commission_deduction(msg_value);
 
-        send_payment(seller, payout);
+        send_payment(msg_addr, payout);
     }
 }

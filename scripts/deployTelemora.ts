@@ -14,14 +14,11 @@ export async function run(provider: NetworkProvider) {
         adminAddress: adminAddress,
         commissionBps: 500,
       },
-      await compile('Telemora',
+      await compile('Telemora'),
     ),
   );
 
-  await telemora.sendDeploy(provider.sender(), toNano('0.05'));
+  await telemora.sendDeploy(provider.sender(), toNano('3'));
 
   await provider.waitForDeploy(telemora.address);
-
-  console.log('Admin Address', await telemora.getAdminAddress());
-  console.log('Commission Percent', await telemora.getCommissionPercent());
 }

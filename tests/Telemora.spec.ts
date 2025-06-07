@@ -1,6 +1,6 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { Address, Cell, toNano } from '@ton/core';
-import { Telemora } from '../wrappers/Telemora';
+import { Opcodes, Telemora } from '../wrappers/Telemora';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 
@@ -41,25 +41,10 @@ describe('Telemora', () => {
 
   it('should return the correct commission percentage', async () => {
     const commission = await telemora.getCommissionPercent();
-    expect(commission).toEqual(500);
-    expect(commission).toStrictEqual(500);
-    expect(commission).toStrictEqual(500);
     expect(commission).toBe(500);
   });
 
-  it('should less than original pay amount after commission deduction', async () => {
-    const res = await telemora.getCommissionDeduction(toNano('2.5'));
-
-    expect(res).toBeLessThan(toNano('2.5'));
-  });
-
-  it('should be 2.375 for 2.5 TON after commission deduction', async () => {
-    const res = await telemora.getCommissionDeduction(toNano('2.5'));
-
-    expect(res).toEqual(toNano('2.375'));
-  });
-
-  it('should send a successful payment', async () => {
+  it('should send a successful payment to Telemora Contract', async () => {
     const buyer = await blockchain.treasury('buyer');
     const seller = await blockchain.treasury('seller');
     const paymentValue = toNano('2.5');
@@ -73,6 +58,8 @@ describe('Telemora', () => {
     expect(sendResult.transactions).toHaveTransaction({
       from: buyer.address,
       to: telemora.address,
+      value: paymentValue,
+      op: Opcodes.payment
     });
   });
 
