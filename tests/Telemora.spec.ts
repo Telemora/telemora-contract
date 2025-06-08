@@ -59,7 +59,25 @@ describe('Telemora', () => {
       from: buyer.address,
       to: telemora.address,
       value: paymentValue,
-      op: Opcodes.payment
+      op: Opcodes.payment,
+    });
+  });
+
+  it('should send withdraw request to Telemora Contract', async () => {
+    const admin = await blockchain.treasury('admin');
+
+    const sendResult = await telemora.sendWithdraw(admin.getSender(), {
+      value: toNano('0.05'),
+      senderAddress: admin.address,
+      withdrawAmount: toNano('2'),
+      queryID: 1,
+    });
+
+    expect(sendResult.transactions).toHaveTransaction({
+      from: admin.address,
+      to: telemora.address,
+      value: toNano('0.05'),
+      op: Opcodes.admin_withdraw,
     });
   });
 
