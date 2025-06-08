@@ -102,7 +102,7 @@ describe('Telemora', () => {
       from: buyer.address,
       to: telemora.address,
       value: paymentValue,
-      op: Opcodes.paymen,
+      op: Opcodes.payment,
     });
   });
 
