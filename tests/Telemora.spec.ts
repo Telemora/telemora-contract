@@ -95,7 +95,7 @@ describe('Telemora', () => {
     const sendResult = await telemora.sendPayment(buyer.getSender(), {
       value: paymentValue,
       sellerAddress: seller.address,
-      queryID: ,
+      queryID: 1,
     });
 
     expect(sendResult.transactions).toHaveTransaction({
