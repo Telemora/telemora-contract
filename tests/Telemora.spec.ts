@@ -30,7 +30,7 @@ describe('Telemora', () => {
       ),
     );
 
-    const deployResult = await telemora.sendDeploy(deployer.getSender(), toNano('0.05'));
+    const deployResult = await telemora.sendDeploy(deployer.getSender(), toNano('1'));
 
     expect(deployResult.transactions).toHaveTransaction({
       from: deployer.address,
@@ -39,28 +39,34 @@ describe('Telemora', () => {
     });
   });
 
-  it('should return the correct commission percentage', async () => {
-    const commission = await telemora.getCommissionPercent();
-    expect(commission).toBe(500);
-  });
-
-  it('should send a successful payment to Telemora Contract', async () => {
+  it('should increases the contract balance', async () => {
     const buyer = await blockchain.treasury('buyer');
     const seller = await blockchain.treasury('seller');
-    const paymentValue = toNano('2.5');
+    const beforeBalance = await telemora.getBalance();
 
-    const sendResult = await telemora.sendPayment(buyer.getSender(), {
-      value: paymentValue,
+    await telemora.sendPayment(buyer.getSender(), {
+      value: toNano('1'),
       sellerAddress: seller.address,
       queryID: 1,
     });
 
-    expect(sendResult.transactions).toHaveTransaction({
-      from: buyer.address,
-      to: telemora.address,
-      value: paymentValue,
-      op: Opcodes.payment,
+    const afterBalance = await telemora.getBalance();
+    expect(afterBalance).toBeGreaterThan(beforeBalance);
+  });
+
+  it('should decreases the contract balance', async () => {
+    const admin = await blockchain.treasury('admin');
+    const beforeBalance = await telemora.getBalance();
+
+    await telemora.sendWithdraw(admin.getSender(), {
+      value: toNano('0'),
+      senderAddress: admin.address,
+      withdrawAmount: toNano('2'),
+      queryID: 1,
     });
+
+    const afterBalance = await telemora.getBalance();
+    expect(afterBalance).toBeLessThan(beforeBalance);
   });
 
   it('should send withdraw request to Telemora Contract', async () => {
@@ -79,6 +85,30 @@ describe('Telemora', () => {
       value: toNano('0.05'),
       op: Opcodes.admin_withdraw,
     });
+  });
+
+  it('should send a successful payment to Telemora Contract', async () => {
+    const buyer = await blockchain.treasury('buyer');
+    const seller = await blockchain.treasury('seller');
+    const paymentValue = toNano('1');
+
+    const sendResult = await telemora.sendPayment(buyer.getSender(), {
+      value: paymentValue,
+      sellerAddress: seller.address,
+      queryID: ,
+    });
+
+    expect(sendResult.transactions).toHaveTransaction({
+      from: buyer.address,
+      to: telemora.address,
+      value: paymentValue,
+      op: Opcodes.paymen,
+    });
+  });
+
+  it('should return the correct commission percentage', async () => {
+    const commission = await telemora.getCommissionPercent();
+    expect(commission).toBe(500);
   });
 
   it('should return the correct admin address', async () => {
