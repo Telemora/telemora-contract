@@ -11,7 +11,7 @@ export function telemoraConfigToCell(config: TelemoraConfig): Cell {
 
 export const Opcodes = {
   admin_withdraw: 0x4cdd6f51,
-  payment: 0x1b40800,
+  change_percent: 0xfc121559,
 };
 
 export class Telemora implements Contract {
@@ -43,7 +43,7 @@ export class Telemora implements Contract {
     return Number(result.balance.toString());
   }
 
-  async sendWithdraw(
+  async sendAdminWithdraw(
     provider: ContractProvider,
     via: Sender,
     opts: {
@@ -66,7 +66,7 @@ export class Telemora implements Contract {
     });
   }
 
-  async sendPayment(
+  async sendPaymentOrder(
     provider: ContractProvider,
     via: Sender,
     opts: {
@@ -75,7 +75,7 @@ export class Telemora implements Contract {
       queryID?: number;
     },
   ) {
-    const body = beginCell().storeUint(Opcodes.payment, 32).storeAddress(opts.sellerAddress).endCell();
+    const body = beginCell().storeAddress(opts.sellerAddress).endCell();
 
     await provider.internal(via, {
       value: opts.value,
@@ -87,10 +87,7 @@ export class Telemora implements Contract {
   async getAdminAddress(provider: ContractProvider) {
     const result = await provider.get('get_admin_address', []);
     const adminAddress = result.stack.readAddressOpt();
-    if (adminAddress) {
-      return adminAddress.toString();
-    }
-    return null;
+    return adminAddress?.toString() || null;
   }
 
   async getCommissionPercent(provider: ContractProvider) {

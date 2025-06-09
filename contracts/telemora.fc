@@ -36,32 +36,42 @@ global int ctx_percent;
 
 () send_msg(slice to_address, int amount, cell payload, int flags, int send_mode) impure inline_ref;
 
-() recv_internal(int msg_value, cell in_msg_cell, slice in_msg) {
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) {
     var (ctx_admin_addr, ctx_percent) = load_data();
+    ~dump(ctx_admin_addr);
 
-    if (in_msg.slice_empty?()) {
+    if (in_msg_body.slice_empty?()) {
         return ();
     }
 
-    slice cs = in_msg_cell.begin_parse();
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4); ;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+    if (flags & 1) {
+        ;; ignore all bounced messages
+        return ();
+    }
     slice sender = cs~load_msg_addr();
+    ~dump(sender);
 
-    int op = in_msg~load_uint(32);
+    int op = in_msg_body~load_uint(32);
 
     if (equal_slice_bits(sender, ctx_admin_addr)) {
         if (op == op::admin_withdraw) {
-            int amount = in_msg~load_coins();
+            int amount = in_msg_body~load_coins();
 
             send_msg(ctx_admin_addr, amount, null(), BOUNCEABLE, MODE::SEND_MODE_REMAINING_AMOUNT);
         }
 
         if (op == op::change_percent) {
-            int new_percent = in_msg~load_int(11);
+            int new_percent = in_msg_body~load_int(11);
             save_data(ctx_admin_addr, new_percent);
         }
     } else {
         int payout = calc_commission_deduction(msg_value, ctx_percent);
-        slice seller_address = in_msg~load_msg_addr();
+        slice seller_address = in_msg_body~load_msg_addr();
+        ~dump(seller_address);
+        ~dump(msg_value);
+        ~dump(payout);
 
         send_msg(seller_address, payout, null(), BOUNCEABLE, MODE::SEND_MODE_REMAINING_AMOUNT);
     }
@@ -84,16 +94,11 @@ global int ctx_percent;
 }
 
 (slice) get_admin_address() method_id {
-    load_data();
+    var (ctx_admin_addr, _) = load_data();
     return ctx_admin_addr;
 }
 
 (int) get_commission_percent() method_id {
-    load_data();
+    var (_, ctx_percent) = load_data();
     return ctx_percent;
-}
-
-(int) get_current_commission_pool_balance() method_id {
-    [int balance_nano, _] = get_balance();
-    return balance_nano;
 }
