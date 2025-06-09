@@ -38,7 +38,6 @@ global int ctx_percent;
 
 () recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) {
     var (ctx_admin_addr, ctx_percent) = load_data();
-    ~dump(ctx_admin_addr);
 
     if (in_msg_body.slice_empty?()) {
         return ();
@@ -51,7 +50,6 @@ global int ctx_percent;
         return ();
     }
     slice sender = cs~load_msg_addr();
-    ~dump(sender);
 
     int op = in_msg_body~load_uint(32);
 
@@ -69,9 +67,6 @@ global int ctx_percent;
     } else {
         int payout = calc_commission_deduction(msg_value, ctx_percent);
         slice seller_address = in_msg_body~load_msg_addr();
-        ~dump(seller_address);
-        ~dump(msg_value);
-        ~dump(payout);
 
         send_msg(seller_address, payout, null(), BOUNCEABLE, MODE::SEND_MODE_REMAINING_AMOUNT);
     }

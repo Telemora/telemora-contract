@@ -75,7 +75,7 @@ export class Telemora implements Contract {
       queryID?: number;
     },
   ) {
-    const body = beginCell().storeAddress(opts.sellerAddress).endCell();
+    const body = beginCell().storeUint(0, 32).storeAddress(opts.sellerAddress).endCell();
 
     await provider.internal(via, {
       value: opts.value,

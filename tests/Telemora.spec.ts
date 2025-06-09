@@ -1,4 +1,4 @@
-import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
+import { Blockchain, printTransactionFees, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { Address, Cell, toNano } from '@ton/core';
 import { Opcodes, Telemora } from '../wrappers/Telemora';
 import '@ton/test-utils';
@@ -30,13 +30,30 @@ describe('Telemora', () => {
       ),
     );
 
-    const deployResult = await telemora.sendDeploy(deployer.getSender(), toNano('1'));
+    const deployResult = await telemora.sendDeploy(deployer.getSender(), toNano('0.05'));
 
     expect(deployResult.transactions).toHaveTransaction({
       from: deployer.address,
       to: telemora.address,
       deploy: true,
     });
+  });
+
+  it('should return the correct contract balance after deployment', async () => {
+    const contractBalance = await telemora.getBalance();
+
+    /**
+     * The contract is deployed with an initial balance of 0.05 TON,
+     * which is equivalent to 50,000,000 nanoTON.
+     *
+     * During deployment, a fee is deducted approximately 332,800 nanoTON
+     * to cover the transaction cost on the TON blockchain.
+     *
+     * Therefore, the expected balance remaining on the contract
+     * after deployment is:
+     *   50,000,000 - 332,800 = 49,667,200 nanoTON.
+     */
+    expect(contractBalance).toBe(49_667_200);
   });
 
   it('should increases the contract balance', async () => {
@@ -54,7 +71,7 @@ describe('Telemora', () => {
     expect(afterBalance).toBeGreaterThan(beforeBalance);
   });
 
-  /*it('should decreases the contract balance', async () => {
+  it('should decreases the contract balance', async () => {
     const admin = await blockchain.treasury('admin');
     const beforeBalance = await telemora.getBalance();
 
@@ -69,7 +86,7 @@ describe('Telemora', () => {
     expect(afterBalance).toBeLessThan(beforeBalance);
   });
 
-  it('should send withdraw request to Telemora Contract', async () => {
+  /*it('should send withdraw request to Telemora Contract', async () => {
     const admin = await blockchain.treasury('admin');
 
     const sendResult = await telemora.sendAdminWithdraw(admin.getSender(), {
