@@ -68,7 +68,7 @@ global int ctx_percent;
         int payout = calc_commission_deduction(msg_value, ctx_percent);
         slice seller_address = in_msg_body~load_msg_addr();
 
-        send_msg(seller_address, payout, null(), BOUNCEABLE, MODE::SEND_MODE_REMAINING_AMOUNT);
+        send_msg(seller_address, payout, null(), NON_BOUNCEABLE, 0);
     }
 }
 

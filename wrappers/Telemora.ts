@@ -1,4 +1,14 @@
-import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
+import {
+  Address,
+  beginCell,
+  Cell,
+  Contract,
+  contractAddress,
+  ContractProvider,
+  Sender,
+  SendMode,
+  toNano
+} from '@ton/core';
 
 export type TelemoraConfig = {
   adminAddress: Address;
@@ -40,14 +50,13 @@ export class Telemora implements Contract {
 
   async getBalance(provider: ContractProvider) {
     const result = await provider.getState();
-    return Number(result.balance.toString());
+    return result.balance;
   }
 
   async sendAdminWithdraw(
     provider: ContractProvider,
     via: Sender,
     opts: {
-      value: bigint;
       senderAddress: Address;
       withdrawAmount: bigint;
       queryID?: number;
@@ -60,7 +69,7 @@ export class Telemora implements Contract {
       .endCell();
 
     await provider.internal(via, {
-      value: opts.value,
+      value: toNano('0.005'),
       sendMode: SendMode.PAY_GAS_SEPARATELY + SendMode.IGNORE_ERRORS,
       body: body,
     });
@@ -79,7 +88,7 @@ export class Telemora implements Contract {
 
     await provider.internal(via, {
       value: opts.value,
-      sendMode: SendMode.PAY_GAS_SEPARATELY + SendMode.IGNORE_ERRORS,
+      sendMode: SendMode.PAY_GAS_SEPARATELY,
       body: body,
     });
   }
