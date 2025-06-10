@@ -75,6 +75,22 @@ export class Telemora implements Contract {
     });
   }
 
+  static withdrawMessage(amount: bigint, queryId: bigint | number = 0) {
+    return beginCell()
+      .storeUint(Opcodes.admin_withdraw, 32)
+      .storeUint(queryId, 64)
+      .storeCoins(amount)
+      .endCell();
+  }
+
+  async sendWithdraw(provider: ContractProvider, via: Sender, amount: bigint, value:bigint = toNano('0.1'), queryId: bigint | number = 0){
+    await provider.internal(via, {
+      body: Telemora.withdrawMessage(amount, queryId),
+      value,
+      sendMode: SendMode.PAY_GAS_SEPARATELY
+    });
+  }
+
   async sendPaymentOrder(
     provider: ContractProvider,
     via: Sender,
