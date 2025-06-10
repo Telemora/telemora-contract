@@ -6,8 +6,6 @@ const NON_BOUNCEABLE = 0x10;
 const op::admin_withdraw = "op::admin_withdraw"c;
 const op::change_percent = "op::change_percent"c;
 
-const MODE::SEND_MODE_REMAINING_AMOUNT = 64;
-
 global slice ctx_admin_addr;
 global int ctx_percent;
 
@@ -44,9 +42,8 @@ global int ctx_percent;
     }
 
     slice cs = in_msg_full.begin_parse();
-    int flags = cs~load_uint(4); ;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+    int flags = cs~load_uint(4);
     if (flags & 1) {
-        ;; ignore all bounced messages
         return ();
     }
     slice sender = cs~load_msg_addr();
@@ -54,10 +51,12 @@ global int ctx_percent;
     int op = in_msg_body~load_uint(32);
 
     if (equal_slice_bits(sender, ctx_admin_addr)) {
+        ~strdump("the sender address is equal to admin address");
         if (op == op::admin_withdraw) {
+            ~strdump("the op code is 0x4cdd6f51");
             int amount = in_msg_body~load_coins();
 
-            send_msg(ctx_admin_addr, amount, null(), BOUNCEABLE, MODE::SEND_MODE_REMAINING_AMOUNT);
+            send_msg(ctx_admin_addr, amount, null(), BOUNCEABLE, 3);
         }
 
         if (op == op::change_percent) {
@@ -68,7 +67,7 @@ global int ctx_percent;
         int payout = calc_commission_deduction(msg_value, ctx_percent);
         slice seller_address = in_msg_body~load_msg_addr();
 
-        send_msg(seller_address, payout, null(), NON_BOUNCEABLE, 0);
+        send_msg(seller_address, payout, null(), NON_BOUNCEABLE, 3);
     }
 }
 
