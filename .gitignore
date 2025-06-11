@@ -2,6 +2,7 @@ node_modules
 temp
 build
 dist
+coverage
 .DS_Store
 
 # VS Code
@@ -16,16 +17,3 @@ dist
 Session.vim
 /package-lock.json
 /output.md
-/coverage/lcov-report/base.css
-/coverage/lcov-report/block-navigation.js
-/coverage/lcov-report/favicon.png
-/coverage/lcov-report/index.html
-/coverage/lcov-report/prettify.css
-/coverage/lcov-report/prettify.js
-/coverage/lcov-report/sort-arrow-sprite.png
-/coverage/lcov-report/sorter.js
-/coverage/lcov-report/Telemora.compile.ts.html
-/coverage/lcov-report/Telemora.ts.html
-/coverage/clover.xml
-/coverage/coverage-final.json
-/coverage/lcov.info
