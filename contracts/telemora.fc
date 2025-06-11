@@ -51,15 +51,15 @@ global int ctx_percent;
     int op = in_msg_body~load_uint(32);
 
     if (equal_slice_bits(sender, ctx_admin_addr)) {
-        ~strdump("the sender address is equal to admin address");
         if (op == op::admin_withdraw) {
-            ~strdump("the op code is 0x4cdd6f51");
+            in_msg_body~load_uint(64);
             int amount = in_msg_body~load_coins();
 
             send_msg(ctx_admin_addr, amount, null(), BOUNCEABLE, 3);
         }
 
         if (op == op::change_percent) {
+            in_msg_body~load_uint(64);
             int new_percent = in_msg_body~load_int(11);
             save_data(ctx_admin_addr, new_percent);
         }

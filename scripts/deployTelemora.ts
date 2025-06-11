@@ -1,6 +1,6 @@
-import { toNano } from '@ton/core';
 import { Telemora } from '../wrappers/Telemora';
 import { compile, NetworkProvider } from '@ton/blueprint';
+import { constants } from '../constants';
 
 export async function run(provider: NetworkProvider) {
   const adminAddress = provider.sender().address;
@@ -12,13 +12,13 @@ export async function run(provider: NetworkProvider) {
     Telemora.createFromConfig(
       {
         adminAddress: adminAddress,
-        commissionBps: 500,
+        commissionBps: constants.commissionBps,
       },
       await compile('Telemora'),
     ),
   );
 
-  await telemora.sendDeploy(provider.sender(), toNano('3'));
+  await telemora.sendDeploy(provider.sender(), constants.INIT_BALANCE);
 
   await provider.waitForDeploy(telemora.address);
 }

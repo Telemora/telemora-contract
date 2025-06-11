@@ -53,28 +53,6 @@ export class Telemora implements Contract {
     return result.balance;
   }
 
-  async sendAdminWithdraw(
-    provider: ContractProvider,
-    via: Sender,
-    opts: {
-      senderAddress: Address;
-      withdrawAmount: bigint;
-      queryID?: number;
-    },
-  ) {
-    const body = beginCell()
-      .storeUint(Opcodes.admin_withdraw, 32)
-      .storeAddress(opts.senderAddress)
-      .storeCoins(opts.withdrawAmount)
-      .endCell();
-
-    await provider.internal(via, {
-      value: toNano('0.005'),
-      sendMode: SendMode.PAY_GAS_SEPARATELY + SendMode.IGNORE_ERRORS,
-      body: body,
-    });
-  }
-
   static withdrawMessage(amount: bigint, queryId: bigint | number = 0) {
     return beginCell()
       .storeUint(Opcodes.admin_withdraw, 32)
@@ -86,6 +64,22 @@ export class Telemora implements Contract {
   async sendWithdraw(provider: ContractProvider, via: Sender, amount: bigint, value:bigint = toNano('0.1'), queryId: bigint | number = 0){
     await provider.internal(via, {
       body: Telemora.withdrawMessage(amount, queryId),
+      value,
+      sendMode: SendMode.PAY_GAS_SEPARATELY
+    });
+  }
+
+  static changePercentMessage(percent: number, queryId: bigint | number = 0) {
+    return beginCell()
+      .storeUint(Opcodes.change_percent, 32)
+      .storeUint(queryId, 64)
+      .storeUint(percent, 11)
+      .endCell();
+  }
+
+  async sendChangePercent(provider: ContractProvider, via: Sender, percent: number, value:bigint = toNano('0.1'), queryId: bigint | number = 0){
+    await provider.internal(via, {
+      body: Telemora.changePercentMessage(percent, queryId),
       value,
       sendMode: SendMode.PAY_GAS_SEPARATELY
     });
